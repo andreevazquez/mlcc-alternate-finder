@@ -1,0 +1,14 @@
+{
+  "name": "mlcc-alternate-finder",
+  "version": "1.0.0",
+  "description": "Find and check alternates for ceramic capacitors (MLCC) on allocation.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "Ricardo Andree Vázquez Tovar",
+  "scripts": {
+    "test": "node --test",
+    "start": "python3 -m http.server 8000",
+    "og-image": "node scripts/make-og-image.mjs"
+  }
+}
