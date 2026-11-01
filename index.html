@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Check ceramic capacitor alternates against the substitution rules planners and component engineers use.">
+<title>Alternate finder for capacitors on allocation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Your capacitor is on allocation. Find a drop-in alternate.</h1>
+    <p class="lede">Enter the part number or the description from your BOM. Choose equivalent parts or upgrades, and the grade your product needs. Every candidate is checked against the rules a planner and a component engineer use before approving a substitute, with the reason it passes or fails.</p>
+  </header>
+
+  <section aria-label="Search">
+    <form id="search-form" role="search" novalidate>
+      <label for="q" class="field-label">Part number or BOM description</label>
+      <div class="search">
+        <input id="q" name="q" type="search" list="parts" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
+          aria-describedby="q-hint q-err" placeholder="GRM188R71H104KA93D or 0.1uF 50V X7R 0603">
+        <datalist id="parts"></datalist>
+        <button class="primary" type="submit">Find alternates</button>
+      </div>
+      <div class="options">
+        <fieldset>
+          <legend class="field-label">Looking for</legend>
+          <div class="seg">
+            <input type="radio" name="mode" id="m-eq" value="equivalent" checked><label for="m-eq">Equivalent</label>
+            <input type="radio" name="mode" id="m-up" value="better"><label for="m-up">Better than original</label>
+          </div>
+        </fieldset>
+        <div>
+          <label for="grade" class="field-label">Grade required</label>
+          <select id="grade" name="grade" aria-describedby="grade-hint">
+            <option value="same">Same as the original</option>
+            <option value="commercial">Commercial</option>
+            <option value="automotive">Automotive (AEC-Q200)</option>
+            <option value="medical">Medical</option>
+          </select>
+        </div>
+      </div>
+      <p class="hint" id="grade-hint">AEC-Q200 can replace commercial, but not medical.</p>
+      <p class="hint" id="q-hint"></p>
+      <p class="error" id="q-err" role="alert" hidden></p>
+    </form>
+    <p class="examples-label" id="ex-label">Or start from a common case:</p>
+    <ul class="examples" id="examples" aria-labelledby="ex-label"></ul>
+  </section>
+
+  <div id="results" hidden>
+    <section aria-labelledby="orig-h">
+      <h2 id="orig-h">Part you need to replace</h2>
+      <div class="label" id="orig"></div>
+    </section>
+
+    <section aria-labelledby="cand-h">
+      <h2 id="cand-h" tabindex="-1">Candidates</h2>
+      <ul class="tally" id="tally"></ul>
+      <div id="cand-body"></div>
+      <details id="ruled-wrap">
+        <summary id="ruled-sum">Ruled out</summary>
+        <ul class="ruled" id="ruled"></ul>
+      </details>
+    </section>
+  </div>
+
+  <p class="sr-only" id="status" aria-live="polite"></p>
+
+  <footer>
+    <p><b>How it decides.</b> Capacitance and case size must match. Voltage rating can only go up. Dielectric can only go up (Y5V, X5R, X7R, C0G). Tolerance can only get tighter. The alternate must carry the grade the design requires, and grades aren’t a ladder: an AEC-Q200 automotive part can replace a commercial one, but neither qualifies for medical use without the manufacturer’s medical-grade series. A part that passes but changes something, like a higher voltage rating that can mean a taller part, is marked for review. A new manufacturer doesn’t change fit, but it does need an approved-vendor-list entry, so it’s noted. “Better than” shows only parts that improve at least one spec or the grade while giving nothing up.</p>
+    <p><b>About the data.</b> This demo catalog covers 0.1 µF, 1 µF, 10 µF and 100 pF ceramic capacitors from six manufacturers, in commercial and AEC-Q200 automotive grades; it has no medical-grade parts, so a medical search shows what’s required instead. Specs follow each manufacturer’s published part-numbering scheme; stock and lead times are simulated. Always confirm against the datasheet before approving a substitute.</p>
+    <p>Built by Ricardo Vázquez, supply chain consultant who has implemented Kinaxis Maestro planning for pharma, food and aerospace companies. Before that, I led electronic-component planning and purchasing in automotive electronics manufacturing, where finding alternates by hand was a weekly fire drill. This is the checklist I wish my team had had.</p>
+  </footer>
+</main>
+</body>
+</html>
