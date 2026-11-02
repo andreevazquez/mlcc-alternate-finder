@@ -42,6 +42,18 @@ export const CAP_VALUES = [...new Set(CATALOG.map(p => p.cap))].sort((a, b) => a
 
 export const DIEL_RANK = {Y5V:0, X5R:1, X7R:2, C0G:3};
 export const DIEL_TEMP = {Y5V:"−30 to 85 °C", X5R:"−55 to 85 °C", X7R:"−55 to 125 °C", C0G:"−55 to 125 °C"};
+// EIA class II codes spell out their range: X/Y/Z is the low end, the digit the high end.
+// Live sources can return codes outside the four above (X6S, X7S, X8R…); C0G is class I.
+const EIA_LOW = {X:-55, Y:-30, Z:10}, EIA_HIGH = {4:65, 5:85, 6:105, 7:125, 8:150, 9:200};
+export function tempRange(diel){
+  if (diel === "C0G") return [-55, 125];
+  const m = /^([XYZ])([4-9])[A-Z]$/.exec(diel || "");
+  return m ? [EIA_LOW[m[1]], EIA_HIGH[m[2]]] : null;
+}
+export function fmtTemp(diel){
+  const r = tempRange(diel);
+  return r ? `${r[0] < 0 ? "−" + -r[0] : r[0]} to ${r[1]} °C` : diel ? "See datasheet" : "Not specified";
+}
 
 // Application grades are not a ladder: AEC-Q200 can stand in for commercial,
 // but nothing except a manufacturer's medical-grade series qualifies for medical use.
@@ -66,7 +78,7 @@ export function fmtCap(pf){
 }
 export const fmtTol   = t => t == null ? "Not specified" : t === 80 ? "+80/−20%" : "±" + t + "%";
 export const fmtVolt  = v => v == null ? "Not specified" : v + " V";
-export const fmtStock = n => n === 0 ? "None" : n >= 1e6 ? trimNum(n / 1e6) + "M" : n >= 1000 ? Math.round(n / 1000) + "k" : String(n);
+export const fmtStock = n => n == null ? "Not listed" : n === 0 ? "None" : n >= 1e6 ? trimNum(n / 1e6) + "M" : n >= 1000 ? Math.round(n / 1000) + "k" : String(n);
 
 /* ---------- Live sources ---------- */
 // Search pages that show live price, stock and MOQ for a part number. The page only links to
@@ -131,7 +143,6 @@ export function parseQuery(raw){
 //   critical – needs a product engineer, or rules the part out (red)
 // upgrades: the specs where the candidate is strictly better than what's required.
 const LEVEL_OF = {ok:"same", info:"minor", warn:"critical", bad:"critical"};
-const TEMP_RANGE = {Y5V:[-30, 85], X5R:[-55, 85], X7R:[-55, 125], C0G:[-55, 125]};
 export const CHECK_ROWS = ["cap", "pkg", "v", "diel", "temp", "tol", "grade", "life", "mfr"];
 
 export function evaluate(o, c, required){
@@ -140,40 +151,51 @@ export function evaluate(o, c, required){
   const at = (key, label, orig, value) => { row = {key, label, orig, value}; };
   const add = (state, text, level = LEVEL_OF[state]) => checks.push({...row, state, level, text});
   const spec = v => v == null ? "Not specified" : v;
+  const listed = v => v == null ? "Not listed" : v;
+  // A live original can have gaps too: say the source doesn't list it, not that you didn't give it.
+  const gap = (what, yours) => o.live ? `the original’s ${what} isn’t listed` : `you didn’t give ${yours}`;
+  const unlisted = what => `${what} not listed by the source: check the datasheet`;
 
   at("cap", "Capacitance", fmtCap(o.cap), fmtCap(c.cap));
   add(c.cap === o.cap ? "ok" : "bad",
       c.cap === o.cap ? `Capacitance ${fmtCap(c.cap)}` : `Capacitance ${fmtCap(c.cap)}, needs ${fmtCap(o.cap)}`);
 
-  at("pkg", "Case size", spec(o.pkg), c.pkg);
-  if (o.pkg == null)        add("warn", `Case ${c.pkg}: you didn’t give one, confirm the footprint`);
+  at("pkg", "Case size", spec(o.pkg), listed(c.pkg));
+  if (c.pkg == null)        add("warn", unlisted("Case size"));
+  else if (o.pkg == null)   add("warn", `Case ${c.pkg}: ${gap("case", "one")}, confirm the footprint`);
   else if (c.pkg === o.pkg) add("ok",   `Case ${c.pkg}, same footprint`);
   else                      add("bad",  `Case ${c.pkg} won’t fit the ${o.pkg} footprint`);
 
   at("v", "Rated voltage", fmtVolt(o.v), fmtVolt(c.v));
-  if (o.v == null)      add("warn", `Rated ${c.v} V: you didn’t give a voltage, confirm it covers the circuit`);
+  if (c.v == null)      add("warn", unlisted("Rated voltage"));
+  else if (o.v == null) add("warn", `Rated ${c.v} V: ${gap("rating", "a voltage")}, confirm it covers the circuit`);
   else if (c.v === o.v) add("ok",   `Rated ${c.v} V`);
   else if (c.v > o.v){  add("warn", `Rated ${c.v} V, up from ${o.v} V: check part height`); upgrades.push(`${c.v} V vs ${o.v} V`); }
   else                  add("bad",  `Rated ${c.v} V, below the ${o.v} V required`);
 
-  at("diel", "Dielectric", spec(o.diel), c.diel);
-  if (o.diel == null)                             add("warn", `Dielectric ${c.diel}: you didn’t give one, confirm with engineering`);
+  at("diel", "Dielectric", spec(o.diel), listed(c.diel));
+  if (c.diel == null)                             add("warn", unlisted("Dielectric"));
+  else if (o.diel == null)                        add("warn", `Dielectric ${c.diel}: ${gap("dielectric", "one")}, confirm with engineering`);
   else if (c.diel === o.diel)                     add("ok",   `Dielectric ${c.diel}`);
+  else if (DIEL_RANK[c.diel] == null || DIEL_RANK[o.diel] == null)
+                                                  add("warn", `${c.diel} instead of ${o.diel}: compare temperature and voltage drift on the datasheets`);
   else if (DIEL_RANK[c.diel] > DIEL_RANK[o.diel]){ add("warn", `${c.diel} instead of ${o.diel}: more stable, confirm with engineering`); upgrades.push(`${c.diel} vs ${o.diel}`); }
   else                                            add("bad",  `${c.diel} is a downgrade from ${o.diel}: drifts more with temperature and voltage`);
 
-  at("temp", "Operating temp", o.diel ? DIEL_TEMP[o.diel] : "Not specified", DIEL_TEMP[c.diel]);
-  const [cLo, cHi] = TEMP_RANGE[c.diel];
-  if (o.diel == null) add("info", `Operating temp ${DIEL_TEMP[c.diel]}`);
+  at("temp", "Operating temp", fmtTemp(o.diel), c.diel ? fmtTemp(c.diel) : "Not listed");
+  const cT = tempRange(c.diel), oT = tempRange(o.diel);
+  if (!cT)      add("info", "Operating temp: check the datasheet");
+  else if (!oT) add("info", `Operating temp ${fmtTemp(c.diel)}`);
   else {
-    const [oLo, oHi] = TEMP_RANGE[o.diel];
-    if (cLo === oLo && cHi === oHi)  add("ok",  `Operating temp ${DIEL_TEMP[c.diel]}`);
-    else if (cLo <= oLo && cHi >= oHi) add("ok", `Operating temp ${DIEL_TEMP[c.diel]}, wider than needed`, "minor");
-    else                             add("bad", `Operating temp ${DIEL_TEMP[c.diel]}, narrower than ${DIEL_TEMP[o.diel]}`);
+    const [cLo, cHi] = cT, [oLo, oHi] = oT;
+    if (cLo === oLo && cHi === oHi)  add("ok",  `Operating temp ${fmtTemp(c.diel)}`);
+    else if (cLo <= oLo && cHi >= oHi) add("ok", `Operating temp ${fmtTemp(c.diel)}, wider than needed`, "minor");
+    else                             add("bad", `Operating temp ${fmtTemp(c.diel)}, narrower than ${fmtTemp(o.diel)}`);
   }
 
   at("tol", "Tolerance", fmtTol(o.tol), fmtTol(c.tol));
-  if (o.tol == null)        add("info", `Tolerance ${fmtTol(c.tol)}`);
+  if (c.tol == null)        add(o.tol == null ? "info" : "warn", unlisted("Tolerance"));
+  else if (o.tol == null)   add("info", `Tolerance ${fmtTol(c.tol)}`);
   else if (c.tol === o.tol) add("ok",   `Tolerance ${fmtTol(c.tol)}`);
   else if (c.tol < o.tol){  add("ok",   `Tolerance ${fmtTol(c.tol)}, tighter than needed`, "minor"); upgrades.push(`${fmtTol(c.tol)} vs ${fmtTol(o.tol)}`); }
   else                      add("bad",  `Tolerance ${fmtTol(c.tol)}, looser than ${fmtTol(o.tol)}`);
@@ -197,7 +219,7 @@ export function evaluate(o, c, required){
   else if (c.life === "Active") add("ok", "Lifecycle: active");
   else                        add("info", "Lifecycle not verified: check active, NRND or EOL");
 
-  at("mfr", "Manufacturer", o.mfr || "Not specified", c.mfr);
+  at("mfr", "Manufacturer", o.mfr || "Not specified", c.mfr || "Not listed");
   if (!o.mfr)              add("info", `Confirm ${c.mfr} is on your AML`);
   else if (c.mfr === o.mfr) add("info", `Same manufacturer, already on your AML`, "same");
   else                     add("info", `New manufacturer: needs an AML entry`);
@@ -246,9 +268,9 @@ export function changeType({steps}){
 
 // Unit price and, with a quantity, total cost and the difference against the original (USD).
 export function costPlan(o, c, qty){
-  const unit = c.usd;
-  const total = qty == null ? null : unit * qty;
-  const base = o.usd ?? null;
+  const unit = c.usd ?? null;
+  const total = qty == null || unit == null ? null : unit * qty;
+  const base = unit == null ? null : o.usd ?? null;
   const deltaUnit = base == null ? null : unit - base;
   return {unit, total, deltaUnit, deltaTotal: deltaUnit == null || qty == null ? null : deltaUnit * qty,
           deltaPct: base ? deltaUnit / base : null};
@@ -281,9 +303,12 @@ const daysBetween = (a, b) => Math.round((b - a) / DAY);
 // Supply: stock covers the need (or, with no quantity, any stock) -> now; otherwise the factory lead time.
 // Usable: the later of supply and approval, assuming you order while approval runs.
 export function supplyPlan(part, {qty = null, needBy = null, today}){
-  const fromStock = qty == null ? part.stock > 0 : part.stock >= qty;
-  const supplyWeeks = fromStock ? 0 : part.lead;
-  const coverage = qty == null ? null : Math.min(1, part.stock / qty);
+  // A live part can lack stock or lead time; then the supply date is unknown, not guessed.
+  const stock = part.stock ?? 0;
+  const fromStock = qty == null ? stock > 0 : stock >= qty;
+  const supplyWeeks = fromStock ? 0 : part.lead ?? null;
+  const coverage = qty == null || part.stock == null ? null : Math.min(1, stock / qty);
+  if (supplyWeeks == null) return {fromStock, supplyWeeks, coverage, date:null, onTime:null, late:null};
   const date = addWeeks(today, supplyWeeks);
   const late = needBy ? Math.max(0, Math.ceil(daysBetween(needBy, date) / 7)) : null;
   return {fromStock, supplyWeeks, coverage, date, onTime: needBy ? date <= needBy : null, late};
@@ -292,6 +317,7 @@ export function supplyPlan(part, {qty = null, needBy = null, today}){
 function plan(o, r, required, demand){
   const approval = approvalPath(o, r, required);
   const supply = supplyPlan(r.part, demand);
+  if (supply.supplyWeeks == null) return {approval, supply, usableWeeks:null, usableDate:null, onTime:null, lateWeeks:0};
   const usableWeeks = Math.max(supply.supplyWeeks, approval.weeks);
   const usableDate = addWeeks(demand.today, usableWeeks);
   const onTime = demand.needBy ? usableDate <= demand.needBy : null;
@@ -303,9 +329,11 @@ function plan(o, r, required, demand){
 // (drop-in, minor, major), then fit (no review items first),
 // then soonest usable in production (approval and supply), then lead time and stock.
 // Better than: only parts that improve something and give nothing up, most upgrades first.
-export function rank(o, {mode, required, demand = {}}){
+// pool: the parts to search, the demo catalog by default or live alternates from a distributor.
+export function rank(o, {mode, required, demand = {}, pool = CATALOG}){
   demand = {qty:null, needBy:null, today:new Date(), ...demand};
-  const results = CATALOG.filter(p => p.pn !== o.pn && p.cap === o.cap).map(p => {
+  const same = p => o.pn && String(p.pn).toUpperCase() === String(o.pn).toUpperCase();
+  const results = pool.filter(p => !same(p) && p.cap != null && p.cap === o.cap).map(p => {
     const r = evaluate(o, p, required);
     if (r.verdict !== "bad"){
       r.plan = plan(o, r, required, demand);
@@ -314,10 +342,13 @@ export function rank(o, {mode, required, demand = {}}){
     }
     return r;
   });
-  const byAvailability = (a, b) => a.part.lead - b.part.lead || b.part.stock - a.part.stock;
+  // Unknown values sort last.
+  const asc = (x, y) => x == null ? (y == null ? 0 : 1) : y == null ? -1 : x - y;
+  const desc = (x, y) => x == null ? (y == null ? 0 : 1) : y == null ? -1 : y - x;
+  const byAvailability = (a, b) => asc(a.part.lead, b.part.lead) || desc(a.part.stock, b.part.stock);
   const byFit = (a, b) => (b.plan.onTime === true) - (a.plan.onTime === true)
     || a.change.order - b.change.order || VERDICT_ORDER[a.verdict] - VERDICT_ORDER[b.verdict]
-    || a.plan.usableWeeks - b.plan.usableWeeks || byAvailability(a, b);
+    || asc(a.plan.usableWeeks, b.plan.usableWeeks) || byAvailability(a, b);
 
   const passing = results.filter(r => r.verdict !== "bad");
   const ruledOut = results.filter(r => r.verdict === "bad").sort(byAvailability);
