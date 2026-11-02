@@ -79,6 +79,7 @@ Durations are assumptions that vary by company and customer; they live in `APPRO
 - The catalog holds **30 MLCCs** (100 pF, 0.1 µF, 1 µF and 10 µF) from Murata, TDK, Samsung, Yageo, KEMET and KYOCERA AVX, in commercial and AEC-Q200 grades.
 - **Specs follow each manufacturer’s part-numbering scheme but have not all been verified against datasheets.** [DATA_CHECK.md](DATA_CHECK.md) tracks that verification. Always confirm against the datasheet before approving a substitute.
 - **Stock, lead times and prices are simulated.** Prices are illustrative unit prices at reel quantity, in USD.
+- **Live data is one click away.** Every part links to its search page on TrustedParts, Octopart, Findchips, Digi-Key and Mouser, which show live price, stock and MOQ. The page links to them; it doesn’t copy their data.
 - **Lifecycle status (active, NRND, EOL) isn’t verified for any part yet.** It’s a column in DATA_CHECK.md; once filled in, add it to the part in `rules.js` as `life:"Active"`, `"NRND"` or `"EOL"`.
 - **There are no medical-grade parts, on purpose.** Inventing part numbers would be worse than leaving them out. A medical search explains what’s required instead: the manufacturer’s medical-grade series and, for life-support or implantable use, the manufacturer’s written approval.
 

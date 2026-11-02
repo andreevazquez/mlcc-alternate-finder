@@ -1,7 +1,7 @@
 // DOM rendering and wiring. All substitution logic lives in rules.js.
 import {
   CATALOG, BY_PN, CAP_VALUES, GRADES, CHECK_ROWS,
-  fmtCap, fmtTol, fmtVolt, fmtStock, fmtWeek, addWeeks, parseQty, parseQuery, rank
+  fmtCap, fmtTol, fmtVolt, fmtStock, fmtWeek, addWeeks, parseQty, parseQuery, rank, liveSources
 } from "./rules.js";
 
 const EXAMPLES = [
@@ -13,6 +13,11 @@ const EXAMPLES = [
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const $ = id => document.getElementById(id);
+// Links to live price, stock and MOQ for a part, opened in a new tab.
+const liveLinks = pn => `
+  <p class="live"><span class="live-label">Live price, stock and MOQ:</span> ${liveSources(pn).map(s =>
+    `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${s.name}<span class="sr-only"> (opens in a new tab)</span></a>`).join("")}</p>`;
+
 // Comparison colors: green same, yellow differs without impact, red needs a product engineer.
 const MARK = {same:"✓", minor:"≈", critical:"!"};
 const LEVEL_SR = {same:"Same", minor:"Minor difference", critical:"Product engineer review"};
@@ -65,7 +70,7 @@ function renderOriginal(o, required, {demand, original}, rate){
       ${o.fromPart ? field("Unit price (simulated)", money(o.usd, rate, 4)) : ""}
       ${o.fromPart && demand.qty ? field(`Cost for ${fmtStock(demand.qty)}`, money(o.usd * demand.qty, rate, 0)) : ""}
     </dl>
-    ${o.fromPart ? `<p class="shortage">Simulated: ${o.stock ? fmtStock(o.stock) + " in stock" : "no stock"} at distribution, ${o.lead}-week factory lead time.${waitText(original, demand)}</p>` : ""}`;
+    ${o.fromPart ? `<p class="shortage">Simulated: ${o.stock ? fmtStock(o.stock) + " in stock" : "no stock"} at distribution, ${o.lead}-week factory lead time.${waitText(original, demand)}</p>${liveLinks(o.pn)}` : ""}`;
 }
 
 // What happens if you just wait for the original part.
@@ -191,6 +196,7 @@ function renderCandidates(o, ranking, {mode, required, rate}){
           ${renderPlan(r, demand)}
           <p class="avail"><span>Stock <b>${fmtStock(r.part.stock)}</b></span><span>Lead time <b>${r.part.lead} wk</b></span><span>Unit price <b>${money(r.cost.unit, rate, 4)}</b>${r.cost.deltaPct == null ? "" : ` (${pct(r.cost.deltaPct)})`}</span>${
             demand.qty ? `<span>Cost for ${fmtStock(demand.qty)} <b>${money(r.cost.total, rate, 0)}</b>${r.cost.deltaTotal == null ? "" : ` (${signedMoney(r.cost.deltaTotal, rate, 0)})`}</span>` : ""}</p>
+          ${liveLinks(r.part.pn)}
         </li>`).join("")}</ol>`
     : `<p class="empty">${esc(emptyMessage({mode, required, ranking}))}</p>`;
 

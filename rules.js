@@ -68,6 +68,20 @@ export const fmtTol   = t => t == null ? "Not specified" : t === 80 ? "+80/−20
 export const fmtVolt  = v => v == null ? "Not specified" : v + " V";
 export const fmtStock = n => n === 0 ? "None" : n >= 1e6 ? trimNum(n / 1e6) + "M" : n >= 1000 ? Math.round(n / 1000) + "k" : String(n);
 
+/* ---------- Live sources ---------- */
+// Search pages that show live price, stock and MOQ for a part number. The page only links to
+// them; it never copies their data.
+export function liveSources(pn){
+  const q = encodeURIComponent(pn);
+  return [
+    {name:"TrustedParts", url:`https://www.trustedparts.com/en/search/${q}`},
+    {name:"Octopart",     url:`https://octopart.com/search?q=${q}`},
+    {name:"Findchips",    url:`https://www.findchips.com/search/${q}`},
+    {name:"Digi-Key",     url:`https://www.digikey.com/en/products/result?keywords=${q}`},
+    {name:"Mouser",       url:`https://www.mouser.com/c/?q=${q}`}
+  ];
+}
+
 /* ---------- Parsing ---------- */
 const looksLikePartNumber = s => /^[A-Z0-9-]{8,}$/.test(s) && /\d/.test(s) && /[A-Z]/.test(s);
 

@@ -2,7 +2,7 @@ import {test, describe} from "node:test";
 import assert from "node:assert/strict";
 import {
   CATALOG, BY_PN, fmtCap, fmtTol, fmtWeek, isoWeek, meetsGrade, parseQuery, parseQty,
-  evaluate, rank, approvalPath, supplyPlan, changeType, costPlan, CHECK_ROWS
+  evaluate, rank, approvalPath, supplyPlan, changeType, costPlan, CHECK_ROWS, liveSources
 } from "../rules.js";
 
 const TODAY = new Date(2026, 10, 2); // Monday, ISO week 45
@@ -358,5 +358,14 @@ describe("cost", () => {
   });
   test("every catalog part has a simulated price", () => {
     assert.ok(CATALOG.every(p => typeof p.usd === "number" && p.usd > 0));
+  });
+});
+
+describe("live sources", () => {
+  test("link to each search page with the part number encoded", () => {
+    const links = liveSources("GRM188R71H104KA93D");
+    assert.deepEqual(links.map(l => l.name), ["TrustedParts", "Octopart", "Findchips", "Digi-Key", "Mouser"]);
+    assert.ok(links.every(l => l.url.startsWith("https://") && l.url.includes("GRM188R71H104KA93D")));
+    assert.ok(liveSources("A B/C").every(l => l.url.includes("A%20B%2FC")));
   });
 });
