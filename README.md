@@ -79,9 +79,24 @@ Durations are assumptions that vary by company and customer; they live in `APPRO
 - The catalog holds **30 MLCCs** (100 pF, 0.1 µF, 1 µF and 10 µF) from Murata, TDK, Samsung, Yageo, KEMET and KYOCERA AVX, in commercial and AEC-Q200 grades.
 - **Specs follow each manufacturer’s part-numbering scheme but have not all been verified against datasheets.** [DATA_CHECK.md](DATA_CHECK.md) tracks that verification. Always confirm against the datasheet before approving a substitute.
 - **Stock, lead times and prices are simulated.** Prices are illustrative unit prices at reel quantity, in USD.
+- **Live data (in progress).** With the Worker deployed, any manufacturer part number is looked up live: specs, lifecycle and datasheet, and one row per authorised distributor offer with stock, MOQ, order multiple, packaging, factory lead time and the price at your order quantity. Alternates come from the same source and go through the same rules. See [Live data](#live-data).
 - **Live data is one click away.** Every part links to its search page on TrustedParts, Octopart, Findchips, Digi-Key and Mouser, which show live price, stock and MOQ. The page links to them; it doesn’t copy their data.
 - **Lifecycle status (active, NRND, EOL) isn’t verified for any part yet.** It’s a column in DATA_CHECK.md; once filled in, add it to the part in `rules.js` as `life:"Active"`, `"NRND"` or `"EOL"`.
 - **There are no medical-grade parts, on purpose.** Inventing part numbers would be worse than leaving them out. A medical search explains what’s required instead: the manufacturer’s medical-grade series and, for life-support or implantable use, the manufacturer’s written approval.
+
+## Live data
+
+`worker/` is a Cloudflare Worker that holds the API keys and answers `GET /part?mpn=…`. The page stays static and calls it.
+
+- **Sources:** Nexar (Octopart’s API) first: one query gives the part and offers from many authorised distributors, plus similar parts; a parametric search adds alternates with the same capacitance and case. **Mouser’s Search API is the fallback** when Nexar fails or its monthly part quota runs out. Official APIs only; no scraping.
+- **Caching:** answers are cached for 6 hours (1 hour when Mouser stood in for Nexar). After Nexar reports its quota is used up, the Worker skips it for an hour and says so on the page.
+- **Every number shows its source and time** (“Nexar · 2 h ago”). A value the source doesn’t give shows as “Not listed” and, for a spec, is flagged for review; nothing is filled in.
+- **Price** uses the break at the order quantity: what you need, at least the MOQ, rounded up to the order multiple. Offers are sorted by what that order would cost, so a 4,000-piece reel doesn’t beat cut tape when you need 10.
+- **Fallback:** if the Worker can’t be reached or doesn’t list the part, the page says why and uses the demo catalog when the part is in it.
+
+Until the Worker is deployed, `WORKER_URL` in `app.js` is empty and the page uses the demo catalog only. To try the page against a local Worker (`cd worker && npx wrangler dev`), open `http://localhost:8000/?api=http://localhost:8787`; the `api` parameter only works on localhost.
+
+The field names in `worker/src/nexar.js` and `worker/src/mouser.js` follow the providers’ public documentation and are tested against hand-written fixtures; they still have to be checked against a real response.
 
 ## Run it locally
 
@@ -109,7 +124,10 @@ npm test
 | `styles.css` | Styles, light and dark mode |
 | `rules.js` | Catalog, parsing, rules, ranking and formatting. Pure logic, no DOM |
 | `app.js` | Rendering and event wiring |
-| `tests/rules.test.js` | Tests for `rules.js` |
+| `live.js` | Calls the Worker; turns offers into the parts `rules.js` ranks (stock, lead time, price at the order quantity) |
+| `worker/src/index.js` | Cloudflare Worker: `GET /part?mpn=…`, Nexar first, Mouser fallback, caching |
+| `worker/src/nexar.js`, `worker/src/mouser.js`, `worker/src/specs.js` | API adapters and spec parsing |
+| `tests/*.test.js` | Tests for the rules, the live mapping and the adapters |
 | `scripts/make-og-image.mjs` | Regenerates `og-image.png` and `apple-touch-icon.png` (needs Playwright: `npm i --no-save playwright && npx playwright install chromium`, then `npm run og-image`) |
 | `DATA_CHECK.md` | Datasheet verification checklist for the catalog |
 
