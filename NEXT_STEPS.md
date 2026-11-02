@@ -36,6 +36,12 @@ Turn the demo into a portfolio piece Ricardo can send to contacts in electronics
   - `app.js`: any MPN goes to the Worker when `API_URL` is set; source and age shown; offers table; demo fallback with the reason. Checked in a browser with a stubbed Worker at 390 px and 1280 px.
 - **Blocked:** in that session both providers rejected the keys in the environment: Nexar’s token endpoint answered `invalid_client` and Mouser answered `Invalid unique identifier` for the API key. Ricardo then connected Cloudflare Workers Builds (path `/worker`); the Worker is live at `https://mlcc-alternate-finder-api.ricardovazqueztovar.workers.dev` and `API_URL` points to it. `*.workers.dev` isn’t in this environment’s allowed domains, so a session can’t call it; add it to test from here.
 
+## First real Mouser response (2 Nov 2026, GRM188R71H104KA93D, seen in a screenshot)
+
+- The key works. Field names `ManufacturerPartNumber`, `MouserPartNumber`, `Manufacturer`, `Description`, `Min`, `Mult`, `LifecycleStatus`, `ProductDetailUrl`, `PriceBreaks` are right.
+- Mouser lists this part as **Obsolete** (`lifecycle: "Obsolete"` → `EOL`), with no stock, no lead time, no price breaks and no packaging attribute.
+- **The description comes in Spanish** (the account is on mouser.mx: “Capacitores cerámicos de capas múltiples (MLCC) - SMD/SMT RECOMMENDED ALT 81-GRM188R72A104KA35”) and, for this obsolete part, holds no specs. So `fromMouser` can’t read capacitance or case and no alternates are searched. To do: ask Mouser for English or read `ProductAttributes`; parse “RECOMMENDED ALT 81-…” and show it as Mouser’s suggested replacement (labelled as Mouser’s, not checked).
+
 ## What Ricardo needs to do
 
 1. **Nexar:** in portal.nexar.com, open the app, check it has the **Supply** scope, and copy the Client ID and Client Secret again (regenerate the secret if unsure). Update `NEXAR_CLIENT_ID` / `NEXAR_CLIENT_SECRET` in the environment settings.
