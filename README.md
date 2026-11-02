@@ -4,8 +4,8 @@ Your capacitor is on allocation. Find a drop-in alternate.
 
 A single-page tool that finds alternates for a multilayer ceramic capacitor (MLCC) that is out of stock or on long lead time. Enter a part number or a raw BOM line such as `CAP CER 10UF 10V X5R 0805`, and the page checks every part in its catalog against the substitution rules a planner and a component engineer apply before approving a substitute. Each candidate is marked **Drop-in**, **Fits, needs review**, or **Not compatible**, with the reason for every check.
 
-- **Live demo:** _URL added at deploy_
-- **Deep link example:** `…/#GRM188R71H104KA93D` opens with that part loaded.
+- **Live demo:** <https://andreevazquez.github.io/mlcc-alternate-finder/>
+- **Deep link example:** <https://andreevazquez.github.io/mlcc-alternate-finder/#GRM188R71H104KA93D> opens with that part loaded.
 
 ## What you can enter
 
