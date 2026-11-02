@@ -119,7 +119,7 @@ function renderOriginal(o, required, {demand, original}, rate, live){
     </dl>
     ${!o.fromPart ? "" : live ? `
       <p class="shortage">${o.stock == null ? "No distributor lists stock" : o.stock ? `${fmtStock(o.stock)} in stock at authorised distributors` : "No stock at authorised distributors"}, ${
-        o.lead == null ? "no factory lead time listed" : `shortest factory lead time ${o.lead} wk`}.${waitText(original, demand)}</p>
+        o.lead == null ? "no factory lead time listed" : `typical factory lead time ${o.lead} wk (median of distributor quotes)`}.${waitText(original, demand)}</p>
       ${renderOffers(o, rate)}
       ${o.datasheet ? `<p class="live"><a href="${esc(o.datasheet)}" target="_blank" rel="noopener noreferrer nofollow">Datasheet<span class="sr-only"> (opens in a new tab)</span></a></p>` : ""}
       ${liveLinks(o.pn)}`
@@ -319,11 +319,11 @@ function fetchLive(mpn){
 function liveProblem(mpn, {data, error}){
   if (error) return `Live data isn’t available right now (${error}).`;
   const errs = data.errors || {};
+  const reasons = [errs.Nexar, errs.Mouser].filter(Boolean);
   if (errs.quota && !data.part) return "Live data isn’t available: this month’s Octopart (Nexar) quota is used up and Mouser didn’t answer either.";
-  const found = Object.values(errs).filter(e => typeof e === "string" && /doesn’t list/.test(e));
-  if (found.length && found.length === Object.values(errs).filter(e => typeof e === "string").length)
+  if (reasons.length && reasons.every(e => /doesn’t list/.test(e)))
     return `No authorised distributor lists ${mpn}. Check the part number.`;
-  return `Live data isn’t available right now (${Object.values(errs).filter(e => typeof e === "string").join("; ") || "no source answered"}).`;
+  return `Live data isn’t available right now (${reasons.join("; ") || "no source answered"}).`;
 }
 
 function setNote(html){
@@ -376,7 +376,8 @@ function render({query, parsed, live, problem}, {focusResults}){
   const candidates = live ? live.candidates.map(c => priceLive(c, demand.qty)) : CATALOG;
   const source = live ? SOURCE_NAME[live.source] || live.source : null;
   setNote(live
-    ? `<span class="src-live">Live</span> ${esc(source)} · ${esc(fmtAgo(live.fetchedAt))}${live.errors?.quota ? ". Octopart’s monthly quota is used up, so this comes from Mouser." : ""}`
+    ? `<span class="src-live">Live</span> ${esc(source)} · ${esc(fmtAgo(live.fetchedAt))}${live.source === "Mouser" && live.errors?.quota ? ". Octopart’s monthly quota is used up, so this comes from Mouser." : ""}${
+        live.alternatesSource && live.alternatesSource !== live.source ? `. Alternates from ${esc(SOURCE_NAME[live.alternatesSource] || live.alternatesSource)}.` : ""}`
     : problem
       ? `<span class="src-demo">Demo</span> ${esc(problem)} Showing the demo catalog instead: stock, lead times and prices are simulated.`
       : API_URL && !parsed.spec?.fromPart

@@ -13,7 +13,7 @@ import {mouserRequest, mouserKeywordRequest, normalizeMouserResponse} from "./mo
 import {fromNexar, fromMouser, alternatesQuery} from "./parts.js";
 
 const CACHE_SECONDS = 6 * 60 * 60;
-const ALTERNATES_LIMIT = 20; // each part returned counts against the Nexar quota
+const ALTERNATES_LIMIT = 10; // each part returned counts against the Nexar quota
 const MPN_RE = /^[A-Za-z0-9][A-Za-z0-9\-./#+]{2,59}$/;
 
 // ALLOWED_ORIGIN can list several origins, comma-separated (the site and a local dev server).
@@ -42,6 +42,11 @@ async function cached(key, compute, ctx){
 }
 
 const message = e => e?.message || "couldn’t be reached";
+const record = (errors, name, e) => {
+  errors[name] = message(e);
+  if (e?.detail) errors[`${name}Detail`] = e.detail;
+  if (e?.quota) errors.quota = true;
+};
 
 /* ---------- Nexar ---------- */
 async function nexarPart(mpn, env){
@@ -86,21 +91,29 @@ export async function lookUp(mpn, env, ctx){
         async () => ({part: await src.part(mpn, env), fetchedAt: new Date().toISOString()}), ctx);
       if (!part){ errors[src.name] = `${src.name} doesn’t list ${mpn}`; continue; }
 
-      let candidates = [], alternatesError = null;
+      // Alternates: from the same source first, then from the next one that's configured.
+      let candidates = [], alternatesError = null, alternatesSource = null;
       if (part.cap != null && part.pkg){
-        try {
-          candidates = (await cached(`${src.name}/alt/${part.cap}/${part.pkg}/${part.diel || "any"}`,
-            async () => ({parts: await src.alternates(part, env)}), ctx)).parts
-            .filter(c => c.cap === part.cap && c.pkg === part.pkg && c.pn.toUpperCase() !== mpn.toUpperCase());
-        } catch (e){ alternatesError = message(e); }
+        for (const alt of SOURCES.slice(SOURCES.indexOf(src)).filter(s => s.configured(env))){
+          try {
+            candidates = (await cached(`${alt.name}/alt/${part.cap}/${part.pkg}/${part.diel || "any"}`,
+              async () => ({parts: await alt.alternates(part, env)}), ctx)).parts
+              .filter(c => c.cap === part.cap && c.pkg === part.pkg && c.pn.toUpperCase() !== mpn.toUpperCase());
+            alternatesSource = alt.name;
+            alternatesError = null;
+            break;
+          } catch (e){
+            alternatesError = message(e);
+            record(errors, `${alt.name}Alternates`, e);
+          }
+        }
       }
-      return {source: src.name, fetchedAt, part, candidates, alternatesError, errors};
+      return {source: src.name, fetchedAt, part, candidates, alternatesSource, alternatesError, errors};
     } catch (e){
-      errors[src.name] = message(e);
-      if (e.quota) errors.quota = true;
+      record(errors, src.name, e);
     }
   }
-  return {source: null, fetchedAt: null, part: null, candidates: [], alternatesError: null, errors};
+  return {source: null, fetchedAt: null, part: null, candidates: [], alternatesSource: null, alternatesError: null, errors};
 }
 
 export default {

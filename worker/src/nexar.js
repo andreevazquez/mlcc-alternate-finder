@@ -54,8 +54,9 @@ export async function nexarToken(env, fetchFn = fetch, now = Date.now()){
 }
 export const resetNexarToken = () => { cachedToken = null; };
 
+// detail keeps Nexar's own words, so a quota or plan limit can be told apart from a bad query.
 export class NexarError extends Error {
-  constructor(message, {quota = false} = {}){ super(message); this.quota = quota; }
+  constructor(message, {quota = false, detail = null} = {}){ super(message); this.quota = quota; this.detail = detail; }
 }
 
 // Quota or rate-limit answers, as HTTP status or GraphQL error text.
@@ -73,7 +74,8 @@ export async function nexarQuery(env, query, variables, fetchFn = fetch){
   const message = (body.errors || []).map(e => e.message).join("; ");
   if (!res.ok || message){
     const quota = isQuotaError(res.status, message);
-    throw new NexarError(quota ? "Nexar’s monthly part quota is used up" : `Nexar answered ${message || res.status}`, {quota});
+    throw new NexarError(quota ? "Nexar’s monthly part quota is used up" : `Nexar answered ${message || res.status}`,
+      {quota, detail: message || `HTTP ${res.status}`});
   }
   return body.data;
 }
@@ -102,6 +104,17 @@ export function normalizeNexarOffer(seller, o){
   };
 }
 
+// Nexar can list the same offer more than once (one per region feed). Identical ones are merged.
+export function dedupeOffers(offers){
+  const seen = new Set();
+  return offers.filter(o => {
+    const key = JSON.stringify([o.seller, o.sku, o.stock, o.moq, o.multiple, o.leadWeeks, o.packaging, o.priceBreaks]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 // One Nexar part -> {mpn, manufacturer, description, specs:{name: displayValue}, offers, …}.
 export function normalizeNexarPart(p){
   const specs = {};
@@ -117,7 +130,7 @@ export function normalizeNexarPart(p){
     specs,
     datasheet: p.bestDatasheet?.url ?? null,
     url: p.octopartUrl ?? null,
-    offers: (p.sellers || []).flatMap(s => (s.offers || []).map(o => normalizeNexarOffer(s, o)))
+    offers: dedupeOffers((p.sellers || []).flatMap(s => (s.offers || []).map(o => normalizeNexarOffer(s, o))))
   };
 }
 

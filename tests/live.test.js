@@ -1,9 +1,9 @@
 import {test, describe, beforeEach} from "node:test";
 import assert from "node:assert/strict";
-import {normalizeNexarResults, nexarToken, resetNexarToken, isQuotaError} from "../worker/src/nexar.js";
+import {normalizeNexarResults, nexarToken, resetNexarToken, isQuotaError, dedupeOffers} from "../worker/src/nexar.js";
 import {
   parseCapacitance, parseVoltage, parseCase, parseDielectric, parseTolerance, parseLifecycle,
-  parseGrade, fromNexar, fromMouser, alternatesQuery
+  parseGrade, fromNexar, fromMouser, alternatesQuery, median
 } from "../worker/src/parts.js";
 import {lookUp} from "../worker/src/index.js";
 import {rank, bestOffer, priceLive, isCheckable} from "../rules.js";
@@ -53,6 +53,15 @@ describe("Nexar adapter", () => {
     assert.equal(await nexarToken(env, fake, 1000), "t1");
     assert.equal(await nexarToken(env, fake, 3600 * 1000), "t2");
     resetNexarToken();
+  });
+  test("merges identical offers", () => {
+    const a = {seller: "D", sku: "1", stock: 5, priceBreaks: [{qty: 1, price: 1, currency: "USD"}]};
+    assert.equal(dedupeOffers([a, {...a}, {...a, stock: 6}]).length, 2);
+  });
+  test("lead time is the median quote, not a distributor’s shipping time", () => {
+    assert.equal(median([52, 52, 1, 1, 61, 36, 36, 53]), 44);
+    assert.equal(median([1, 52, 61]), 52);
+    assert.equal(median([]), null);
   });
   test("recognises quota answers", () => {
     assert.ok(isQuotaError(429));
@@ -131,6 +140,29 @@ describe("Worker source order", () => {
       assert.match(r.errors.Nexar, /quota/);
       assert.deepEqual([r.part.pn, r.part.cap, r.part.lead], ["TEST-3", 100000, 10]);
       assert.ok(r.fetchedAt);
+    } finally { globalThis.fetch = realFetch; }
+  });
+  test("searches alternates on Mouser when Nexar’s alternates search fails", async () => {
+    const part = {mpn: "TEST-5", manufacturer: {name: "M"}, specs: Object.entries(SPECS).map(([name, displayValue]) => ({attribute: {name}, displayValue})), sellers: []};
+    const mouserJson = {Errors: [], SearchResults: {Parts: [
+      {ManufacturerPartNumber: "TEST-6", Manufacturer: "Other", Description: "MLCC - SMD/SMT 0603 0.1uF 50volts X7R 10%", PriceBreaks: []},
+      {ManufacturerPartNumber: "TEST-7", Manufacturer: "Other", Description: "MLCC - SMD/SMT 0805 0.1uF 50volts X7R 10%", PriceBreaks: []}]}};
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (url.includes("mouser")) return {ok: true, json: async () => mouserJson};
+      if (url.includes("identity")) return {ok: true, json: async () => ({access_token: "t", expires_in: 3600})};
+      const isMpn = JSON.parse(init.body).query.includes("supSearchMpn");
+      return {ok: true, json: async () => isMpn
+        ? {data: {supSearchMpn: {results: [{part}]}}}
+        : {errors: [{message: "Monthly part limit exceeded"}]}};
+    };
+    try {
+      const r = await lookUp("TEST-5", {NEXAR_CLIENT_ID: "id", NEXAR_CLIENT_SECRET: "s", MOUSER_API_KEY: "k"}, {waitUntil(){}});
+      assert.equal(r.source, "Nexar");
+      assert.equal(r.alternatesSource, "Mouser");
+      assert.equal(r.alternatesError, null);
+      assert.deepEqual(r.candidates.map(c => c.pn), ["TEST-6"], "same case only");
+      assert.equal(r.errors.NexarAlternatesDetail, "Monthly part limit exceeded", "keeps Nexar’s own words");
     } finally { globalThis.fetch = realFetch; }
   });
   test("says so when no source is configured", async () => {

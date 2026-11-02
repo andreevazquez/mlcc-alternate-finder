@@ -36,6 +36,12 @@ Turn the demo into a portfolio piece Ricardo can send to contacts in electronics
   - `app.js`: any MPN goes to the Worker when `API_URL` is set; source and age shown; offers table; demo fallback with the reason. Checked in a browser with a stubbed Worker at 390 px and 1280 px.
 - **Blocked:** in that session both providers rejected the keys in the environment: Nexar’s token endpoint answered `invalid_client` and Mouser answered `Invalid unique identifier` for the API key. Ricardo then connected Cloudflare Workers Builds (path `/worker`); the Worker is live at `https://mlcc-alternate-finder-api.ricardovazqueztovar.workers.dev` and `API_URL` points to it. `*.workers.dev` isn’t in this environment’s allowed domains, so a session can’t call it; add it to test from here.
 
+## First real Nexar response (2 Nov 2026, CL10B104KB8NNNC, seen in screenshots)
+
+- Token, query and field names work: `cap 100000, v 50, pkg 0603, diel X7R, tol 10, life Active`, offers from Future, DigiKey, TME, Arrow, Avnet, Newark, Schukat, TTI Europe (EUR converted to USD).
+- The alternates search (limit 20) failed with what the Worker read as a quota error. Now: limit 10, Nexar’s own message is kept in `errors.NexarAlternatesDetail`, and alternates fall back to Mouser. **Check that detail** to tell a real monthly quota from a plan limit on `limit`.
+- Nexar repeats identical offers (one per region feed): now merged. Lead time is now the median quote, since stocking distributors (TME) quote 1 week of shipping.
+
 ## First real Mouser response (2 Nov 2026, GRM188R71H104KA93D, seen in a screenshot)
 
 - The key works. Field names `ManufacturerPartNumber`, `MouserPartNumber`, `Manufacturer`, `Description`, `Min`, `Mult`, `LifecycleStatus`, `ProductDetailUrl`, `PriceBreaks` are right.

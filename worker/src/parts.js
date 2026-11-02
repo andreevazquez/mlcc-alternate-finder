@@ -63,11 +63,18 @@ const pick = (specs, ...patterns) => {
 };
 
 const sum = xs => xs.reduce((n, x) => n + x, 0);
-// Stock and lead time across the offers: total authorised stock, shortest quoted factory lead time.
+// The middle value. Distributors that stock a part often quote their own shipping time (1 week)
+// as the lead time, so the shortest quote understates the factory lead time; the median doesn't.
+export function median(xs){
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b), m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
+}
+// Stock and lead time across the offers: total authorised stock, median quoted factory lead time.
 function supply(offers){
   const stocks = offers.map(o => o.stock).filter(n => n != null);
   const leads = offers.map(o => o.leadWeeks).filter(n => n != null);
-  return {stock: stocks.length ? sum(stocks) : null, lead: leads.length ? Math.min(...leads) : null};
+  return {stock: stocks.length ? sum(stocks) : null, lead: median(leads)};
 }
 
 // A part from nexar.js normalizeNexarPart.
@@ -113,7 +120,7 @@ export function fromMouser(parts){
     // Mouser offers for one MPN share one stock pool, so take the largest instead of adding them up.
     const stocks = p.offers.map(o => o.stock).filter(n => n != null);
     const leads = p.offers.map(o => o.leadWeeks).filter(n => n != null);
-    return {...p, stock: stocks.length ? Math.max(...stocks) : null, lead: leads.length ? Math.min(...leads) : null};
+    return {...p, stock: stocks.length ? Math.max(...stocks) : null, lead: median(leads)};
   });
 }
 
