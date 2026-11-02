@@ -146,18 +146,101 @@ export function evaluate(o, c, required){
     upgrades.push(GRADES[c.grade].short);
   }
 
-  if (o.mfr) add("info", c.mfr === o.mfr ? "Same manufacturer: simplest approval" : "New manufacturer: needs an approved-vendor-list entry");
+  // Lifecycle: no catalog part is verified yet, so this stays a note until DATA_CHECK.md fills it in.
+  if (c.life === "EOL")       add("bad",  "End of life: don’t approve it as an alternate");
+  else if (c.life === "NRND") add("warn", "Not recommended for new designs: check last-time-buy dates");
+  else if (c.life === "Active") add("ok", "Lifecycle: active");
+  else                        add("info", "Lifecycle not verified: check active, NRND or EOL");
+
+  if (o.mfr) add("info", c.mfr === o.mfr ? `Same manufacturer, already on your AML` : `New manufacturer: needs an AML entry`);
+  else       add("info", `Confirm ${c.mfr} is on your AML`);
 
   const verdict = checks.some(k => k.state === "bad") ? "bad" : checks.some(k => k.state === "warn") ? "warn" : "ok";
   return {part:c, checks, verdict, upgrades, fails:checks.filter(k => k.state === "bad").map(k => k.text)};
 }
 
-// Equivalent: best fit, then soonest available, then most stock.
+/* ---------- Planning ---------- */
+// Typical approval durations, in weeks. They vary by company and customer;
+// the page states them as assumptions.
+export const APPROVAL_STEPS = {
+  aml:    {weeks:1, text:"Add the part number to the AML and the ERP item master"},
+  mfr:    {weeks:3, text:"Samples and build validation for a new manufacturer"},
+  mfrChk: {weeks:3, text:"Samples and build validation, unless the manufacturer is already on your AML"},
+  eng:    {weeks:2, text:"Engineering review of the flagged items"},
+  ppap:   {weeks:6, text:"PPAP and customer approval: automotive customers must approve a change of component"}
+};
+
+// The steps a candidate needs before it can go into production, in order.
+export function approvalPath(o, r, required){
+  const keys = [];
+  if (r.verdict === "warn") keys.push("eng");
+  if (!o.mfr) keys.push("mfrChk");
+  else if (r.part.mfr !== o.mfr) keys.push("mfr");
+  if (required === "automotive") keys.push("ppap");
+  keys.push("aml");
+  const steps = keys.map(k => ({key:k, ...APPROVAL_STEPS[k]}));
+  return {steps, weeks:steps.reduce((n, s) => n + s.weeks, 0)};
+}
+
+// "250000", "250,000", "250k", "1.2M" -> pieces. Empty -> null. Anything else -> NaN.
+export function parseQty(raw){
+  const s = String(raw ?? "").trim().toLowerCase().replace(/[,\s_]/g, "");
+  if (!s) return null;
+  const m = s.match(/^(\d+(?:\.\d+)?)(k|m)?(pcs?)?$/);
+  if (!m) return NaN;
+  const n = Math.round(parseFloat(m[1]) * (m[2] === "k" ? 1e3 : m[2] === "m" ? 1e6 : 1));
+  return n > 0 ? n : NaN;
+}
+
+const DAY = 864e5;
+export const addWeeks = (d, w) => { const x = new Date(d); x.setDate(x.getDate() + w * 7); return x; };
+export function isoWeek(d){
+  const x = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  x.setUTCDate(x.getUTCDate() + 4 - (x.getUTCDay() || 7));
+  return Math.ceil(((x - Date.UTC(x.getUTCFullYear(), 0, 1)) / DAY + 1) / 7);
+}
+// The year shows only when it differs from the reference date (today, in the page).
+export const fmtDate = (d, ref = d) => d.toLocaleDateString("en-US",
+  d.getFullYear() === ref.getFullYear() ? {month:"short", day:"numeric"} : {month:"short", day:"numeric", year:"numeric"});
+export const fmtWeek = (d, ref) => `wk ${isoWeek(d)} · ${fmtDate(d, ref)}`;
+export const fmtWeeks = w => w === 0 ? "now" : `${w} wk`;
+const daysBetween = (a, b) => Math.round((b - a) / DAY);
+
+// Supply: stock covers the need (or, with no quantity, any stock) -> now; otherwise the factory lead time.
+// Usable: the later of supply and approval, assuming you order while approval runs.
+export function supplyPlan(part, {qty = null, needBy = null, today}){
+  const fromStock = qty == null ? part.stock > 0 : part.stock >= qty;
+  const supplyWeeks = fromStock ? 0 : part.lead;
+  const coverage = qty == null ? null : Math.min(1, part.stock / qty);
+  const date = addWeeks(today, supplyWeeks);
+  const late = needBy ? Math.max(0, Math.ceil(daysBetween(needBy, date) / 7)) : null;
+  return {fromStock, supplyWeeks, coverage, date, onTime: needBy ? date <= needBy : null, late};
+}
+
+function plan(o, r, required, demand){
+  const approval = approvalPath(o, r, required);
+  const supply = supplyPlan(r.part, demand);
+  const usableWeeks = Math.max(supply.supplyWeeks, approval.weeks);
+  const usableDate = addWeeks(demand.today, usableWeeks);
+  const onTime = demand.needBy ? usableDate <= demand.needBy : null;
+  const lateWeeks = demand.needBy && !onTime ? Math.ceil(daysBetween(demand.needBy, usableDate) / 7) : 0;
+  return {approval, supply, usableWeeks, usableDate, onTime, lateWeeks};
+}
+
+// Equivalent: usable by the need date first (when given), then lowest risk (drop-in before review),
+// then soonest usable in production (approval and supply), then lead time and stock.
 // Better than: only parts that improve something and give nothing up, most upgrades first.
-export function rank(o, {mode, required}){
-  const results = CATALOG.filter(p => p.pn !== o.pn && p.cap === o.cap).map(p => evaluate(o, p, required));
+export function rank(o, {mode, required, demand = {}}){
+  demand = {qty:null, needBy:null, today:new Date(), ...demand};
+  const results = CATALOG.filter(p => p.pn !== o.pn && p.cap === o.cap).map(p => {
+    const r = evaluate(o, p, required);
+    if (r.verdict !== "bad") r.plan = plan(o, r, required, demand);
+    return r;
+  });
   const byAvailability = (a, b) => a.part.lead - b.part.lead || b.part.stock - a.part.stock;
-  const byFit = (a, b) => VERDICT_ORDER[a.verdict] - VERDICT_ORDER[b.verdict] || byAvailability(a, b);
+  const byFit = (a, b) => (b.plan.onTime === true) - (a.plan.onTime === true)
+    || VERDICT_ORDER[a.verdict] - VERDICT_ORDER[b.verdict]
+    || a.plan.usableWeeks - b.plan.usableWeeks || byAvailability(a, b);
 
   const passing = results.filter(r => r.verdict !== "bad");
   const ruledOut = results.filter(r => r.verdict === "bad").sort(byAvailability);
@@ -169,9 +252,12 @@ export function rank(o, {mode, required}){
   } else {
     fits.sort(byFit);
   }
+  // Waiting for the original is the baseline every alternate competes with.
+  const original = o.fromPart ? supplyPlan(o, demand) : null;
   return {
-    fits, ruledOut, equivalentOnly,
+    fits, ruledOut, equivalentOnly, demand, original,
     dropIns: fits.filter(r => r.verdict === "ok").length,
-    reviews: fits.filter(r => r.verdict === "warn").length
+    reviews: fits.filter(r => r.verdict === "warn").length,
+    onTime: demand.needBy ? fits.filter(r => r.plan.onTime).length : null
   };
 }

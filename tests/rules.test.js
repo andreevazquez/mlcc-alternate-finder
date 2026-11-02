@@ -1,6 +1,11 @@
 import {test, describe} from "node:test";
 import assert from "node:assert/strict";
-import {CATALOG, BY_PN, fmtCap, fmtTol, meetsGrade, parseQuery, evaluate, rank} from "../rules.js";
+import {
+  CATALOG, BY_PN, fmtCap, fmtTol, fmtWeek, isoWeek, meetsGrade, parseQuery, parseQty,
+  evaluate, rank, approvalPath, supplyPlan
+} from "../rules.js";
+
+const TODAY = new Date(2026, 10, 2); // Monday, ISO week 45
 
 const spec = q => {
   const r = parseQuery(q);
@@ -138,10 +143,23 @@ describe("other rules", () => {
     assert.equal(r.verdict, "warn");
     assert.ok(r.checks.some(k => /check part height/.test(k.text)));
   });
-  test("new manufacturer is an info note that doesn’t change the verdict", () => {
+  test("new manufacturer is an AML note that doesn’t change the verdict", () => {
     const r = evaluate(o, BY_PN.get("CL10B104KB8NNNC"), "commercial");
     assert.equal(r.verdict, "ok");
-    assert.ok(r.checks.some(k => k.state === "info" && /approved-vendor-list/.test(k.text)));
+    assert.ok(r.checks.some(k => k.state === "info" && k.text === "New manufacturer: needs an AML entry"));
+    const same = evaluate(o, BY_PN.get("GCM188R71H104KA57D"), "commercial");
+    assert.ok(same.checks.some(k => k.text === "Same manufacturer, already on your AML"));
+  });
+  test("description searches ask to confirm the manufacturer is on the AML", () => {
+    const r = evaluate(spec("0.1uF 50V X7R 0603"), BY_PN.get("CL10B104KB8NNNC"), "commercial");
+    assert.ok(r.checks.some(k => k.text === "Confirm Samsung is on your AML"));
+  });
+  test("lifecycle: unverified is a note, NRND needs review, EOL is ruled out", () => {
+    const c = BY_PN.get("CL10B104KB8NNNC");
+    assert.ok(evaluate(o, c, "commercial").checks.some(k => k.state === "info" && /Lifecycle not verified/.test(k.text)));
+    assert.equal(evaluate(o, {...c, life:"Active"}, "commercial").verdict, "ok");
+    assert.equal(evaluate(o, {...c, life:"NRND"}, "commercial").verdict, "warn");
+    assert.equal(evaluate(o, {...c, life:"EOL"}, "commercial").verdict, "bad");
   });
   test("the original part is never its own alternate", () => {
     const {fits, ruledOut} = rank(o, {mode:"equivalent", required:"commercial"});
@@ -162,15 +180,31 @@ describe("missing description fields", () => {
 });
 
 describe("ranking", () => {
-  test("equivalent mode sorts by verdict, then lead time, then stock", () => {
-    const {fits} = rank(BY_PN.get("GRM188R71H104KA93D"), {mode:"equivalent", required:"commercial"});
+  test("equivalent mode without a need date sorts by verdict, then usable date, then lead time and stock", () => {
+    const {fits} = rank(BY_PN.get("GRM188R71H104KA93D"), {mode:"equivalent", required:"commercial", demand:{today:TODAY}});
     const order = {ok:0, warn:1};
     for (let i = 1; i < fits.length; i++){
       const a = fits[i - 1], b = fits[i];
-      const cmp = order[a.verdict] - order[b.verdict] || a.part.lead - b.part.lead || b.part.stock - a.part.stock;
+      const cmp = order[a.verdict] - order[b.verdict] || a.plan.usableWeeks - b.plan.usableWeeks
+        || a.part.lead - b.part.lead || b.part.stock - a.part.stock;
       assert.ok(cmp <= 0, `${a.part.pn} should not rank above ${b.part.pn}`);
     }
-    assert.equal(fits[0].part.pn, "CC0603KRX7R9BB104");
+    // Same manufacturer, in stock: only the AML step, so it is usable first.
+    assert.equal(fits[0].part.pn, "GCM188R71H104KA57D");
+    assert.equal(fits[0].plan.usableWeeks, 1);
+  });
+  test("with a need date, on-time parts rank first, drop-ins before reviews", () => {
+    const demand = {qty:250000, needBy:new Date(2026, 10, 30), today:TODAY};
+    const r = rank(spec("GRM188R71H104KA93D"), {mode:"equivalent", required:"commercial", demand});
+    assert.equal(r.onTime, 4);
+    assert.deepEqual(pns(r.fits.slice(0, 4)),
+      ["CC0603KRX7R9BB104", "CL10B104KB8NNNC", "C1608X7R1H104K080AA", "GRM188R72A104KA35D"]);
+    assert.ok(r.fits.slice(4).every(f => f.plan.onTime === false && f.plan.lateWeeks > 0));
+    // GCM188 has only 8k of the 250k in stock, so it waits for the 22-week factory lead time.
+    const gcm = r.fits.find(f => f.part.pn === "GCM188R71H104KA57D");
+    assert.equal(gcm.plan.usableWeeks, 22);
+    assert.equal(r.original.onTime, false);
+    assert.equal(r.original.late, 22);
   });
   test("better-than mode excludes equivalents and ranks by number of upgrades", () => {
     const o = spec("CAP CER 10UF 10V X5R 0805");
@@ -188,5 +222,72 @@ describe("ranking", () => {
   test("tally counts match the fits", () => {
     const r = rank(BY_PN.get("GRM188R71H104KA93D"), {mode:"equivalent", required:"commercial"});
     assert.equal(r.dropIns + r.reviews, r.fits.length);
+  });
+});
+
+describe("demand and supply", () => {
+  test("quantity accepts plain numbers, separators and k/M suffixes", () => {
+    assert.equal(parseQty("250000"), 250000);
+    assert.equal(parseQty("250,000"), 250000);
+    assert.equal(parseQty("250k"), 250000);
+    assert.equal(parseQty("1.2M"), 1200000);
+    assert.equal(parseQty(" 5000 pcs"), 5000);
+    assert.equal(parseQty(""), null);
+    assert.ok(Number.isNaN(parseQty("abc")));
+    assert.ok(Number.isNaN(parseQty("0")));
+  });
+  test("stock that covers the quantity is available now; otherwise the factory lead time", () => {
+    const part = BY_PN.get("C1608X7R1H104K080AA"); // 120k stock, 4 wk lead
+    const full = supplyPlan(part, {qty:100000, today:TODAY});
+    assert.deepEqual([full.fromStock, full.supplyWeeks, full.coverage], [true, 0, 1]);
+    const partial = supplyPlan(part, {qty:240000, today:TODAY});
+    assert.deepEqual([partial.fromStock, partial.supplyWeeks, partial.coverage], [false, 4, 0.5]);
+    const noQty = supplyPlan(part, {today:TODAY});
+    assert.deepEqual([noQty.fromStock, noQty.coverage], [true, null]);
+  });
+  test("weeks and dates format as ISO weeks, with the year only when it differs", () => {
+    assert.equal(isoWeek(TODAY), 45);
+    assert.equal(isoWeek(new Date(2026, 11, 28)), 53);
+    assert.equal(isoWeek(new Date(2027, 0, 4)), 1);
+    assert.equal(fmtWeek(new Date(2026, 10, 30), TODAY), "wk 49 · Nov 30");
+    assert.equal(fmtWeek(new Date(2027, 4, 3), TODAY), "wk 18 · May 3, 2027");
+  });
+});
+
+describe("approval path", () => {
+  const o = BY_PN.get("GRM188R71H104KA93D");
+  const path = (pn, required = "commercial", orig = o) => approvalPath(orig, evaluate(orig, BY_PN.get(pn), required), required);
+  test("same manufacturer drop-in: AML entry only", () => {
+    const p = path("GCM188R71H104KA57D");
+    assert.deepEqual(p.steps.map(s => s.key), ["aml"]);
+    assert.equal(p.weeks, 1);
+  });
+  test("new manufacturer adds samples and build validation", () => {
+    const p = path("CL10B104KB8NNNC");
+    assert.deepEqual(p.steps.map(s => s.key), ["mfr", "aml"]);
+    assert.equal(p.weeks, 4);
+  });
+  test("a part that needs review adds engineering review", () => {
+    assert.deepEqual(path("GRM188R72A104KA35D").steps.map(s => s.key), ["eng", "aml"]);
+  });
+  test("an automotive design adds PPAP and customer approval", () => {
+    const p = path("CGA3E2X7R1H104K080AA", "automotive");
+    assert.deepEqual(p.steps.map(s => s.key), ["mfr", "ppap", "aml"]);
+    assert.equal(p.weeks, 10);
+  });
+  test("a description search can’t tell if the manufacturer is new, so it plans for samples", () => {
+    const d = spec("0.1uF 50V X7R 0603");
+    assert.deepEqual(path("CL10B104KB8NNNC", "commercial", d).steps.map(s => s.key), ["mfrChk", "aml"]);
+  });
+  test("usable date is the later of supply and approval", () => {
+    const demand = {qty:50000, needBy:new Date(2027, 0, 25), today:TODAY};
+    const r = rank(o, {mode:"equivalent", required:"automotive", demand});
+    const cga = r.fits.find(f => f.part.pn === "CGA3E2X7R1H104K080AA"); // 64k in stock, 10 wk approval
+    assert.equal(cga.plan.supply.supplyWeeks, 0);
+    assert.equal(cga.plan.usableWeeks, 10);
+    assert.equal(cga.plan.onTime, true);
+    const gcm = r.fits.find(f => f.part.pn === "GCM188R71H104KA57D"); // 8k in stock, 22 wk lead, 7 wk approval
+    assert.equal(gcm.plan.usableWeeks, 22);
+    assert.equal(gcm.plan.onTime, false);
   });
 });

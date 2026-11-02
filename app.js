@@ -1,13 +1,13 @@
 // DOM rendering and wiring. All substitution logic lives in rules.js.
 import {
   CATALOG, BY_PN, CAP_VALUES, DIEL_TEMP, GRADES, VERDICT_LABEL,
-  fmtCap, fmtTol, fmtVolt, fmtStock, parseQuery, rank
+  fmtCap, fmtTol, fmtVolt, fmtStock, fmtWeek, addWeeks, parseQty, parseQuery, rank
 } from "./rules.js";
 
 const EXAMPLES = [
-  {label:"0.1 µF, Murata, out of stock",        query:"GRM188R71H104KA93D",          mode:"equivalent", grade:"same"},
+  {label:"0.1 µF out of stock, 250k needed in 4 weeks", query:"GRM188R71H104KA93D", mode:"equivalent", grade:"same", qty:"250k", weeks:4},
   {label:"10 µF from a BOM line, better than",  query:"CAP CER 10UF 10V X5R 0805",   mode:"better",     grade:"same"},
-  {label:"Commercial design moving to automotive", query:"GRM188R71H104KA93D",       mode:"equivalent", grade:"automotive"},
+  {label:"Moving to automotive, 50k in 12 weeks", query:"GRM188R71H104KA93D",        mode:"equivalent", grade:"automotive", qty:"50k", weeks:12},
   {label:"100 pF for a medical device",         query:"100pF 50V C0G 0603",          mode:"equivalent", grade:"medical"}
 ];
 
@@ -17,13 +17,19 @@ const MARK = {ok:"✓", warn:"!", bad:"✕", info:"i"};
 const MARK_SR = {ok:"Pass", warn:"Review", bad:"Fail", info:"Note"};
 let current = null;
 
+const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const isoDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 function getOptions(){
   const mode = document.querySelector('input[name="mode"]:checked').value;
   const grade = $("grade").value;
-  return {mode, grade};
+  const qty = parseQty($("qty").value);
+  const [y, m, d] = $("need").value.split("-").map(Number);
+  const needBy = y ? new Date(y, m - 1, d) : null;
+  return {mode, grade, qty, demand:{qty: Number.isNaN(qty) ? null : qty, needBy, today:today()}};
 }
 
-function renderOriginal(o, required){
+function renderOriginal(o, required, {demand, original}){
   const title = o.fromPart
     ? `<div><div class="pn">${esc(o.pn)}</div><div class="maker">${esc(o.mfr)} ceramic capacitor</div></div>`
     : `<div><div class="pn">Spec from your description</div><div class="maker">No part number, so matching on these specs</div></div>`;
@@ -35,8 +41,42 @@ function renderOriginal(o, required){
       ${field("Case", o.pkg || "Not specified")}${field("Dielectric", o.diel || "Not specified")}
       ${field("Tolerance", fmtTol(o.tol))}${field("Grade", GRADES[o.grade].label)}
       ${required !== o.grade ? field("Grade required now", GRADES[required].label) : ""}
+      ${demand.qty ? field("Quantity needed", fmtStock(demand.qty)) : ""}
+      ${demand.needBy ? field("Needed by", fmtWeek(demand.needBy, demand.today)) : ""}
     </dl>
-    ${o.fromPart ? `<p class="shortage">Simulated: ${o.stock ? fmtStock(o.stock) + " in stock" : "no stock"} at distribution, ${o.lead}-week factory lead time.</p>` : ""}`;
+    ${o.fromPart ? `<p class="shortage">Simulated: ${o.stock ? fmtStock(o.stock) + " in stock" : "no stock"} at distribution, ${o.lead}-week factory lead time.${waitText(original, demand)}</p>` : ""}`;
+}
+
+// What happens if you just wait for the original part.
+function waitText(original, demand){
+  const {needBy} = demand;
+  if (!needBy || original.fromStock) return "";
+  return original.onTime
+    ? ` Waiting for it still makes the need date (${fmtWeek(original.date, demand.today)}).`
+    : ` Waiting for it means ${fmtWeek(original.date, demand.today)}, ${original.late} wk late.`;
+}
+
+function supplyText(part, {qty}){
+  if (qty == null) return part.stock > 0 ? `from stock (${fmtStock(part.stock)})` : `${part.lead} wk from the factory`;
+  if (part.stock >= qty) return `from stock, covers all ${fmtStock(qty)}`;
+  if (part.stock > 0) return `stock covers ${Math.floor(part.stock / qty * 100)}% now, the rest in ${part.lead} wk`;
+  return `no stock, ${part.lead} wk from the factory`;
+}
+
+function renderPlan(r, demand){
+  const {approval, usableDate, onTime, lateWeeks} = r.plan;
+  const chip = onTime == null ? "" : onTime
+    ? `<span class="verdict v-ok">On time</span>`
+    : `<span class="verdict v-warn">${lateWeeks} wk late</span>`;
+  return `
+    <div class="plan">
+      <p class="plan-head"><span>Usable in production <b>${fmtWeek(usableDate, demand.today)}</b></span>${chip}</p>
+      <p class="plan-sub">Supply ${esc(supplyText(r.part, demand))}. Approval about ${approval.weeks} wk, run in parallel.</p>
+      <details class="path">
+        <summary>Approval path: ${approval.steps.length} step${approval.steps.length > 1 ? "s" : ""}, about ${approval.weeks} wk</summary>
+        <ol class="steps">${approval.steps.map(s => `<li>${esc(s.text)} <span class="wk">${s.weeks} wk</span></li>`).join("")}</ol>
+      </details>
+    </div>`;
 }
 
 function emptyMessage({mode, required, ranking}){
@@ -52,20 +92,25 @@ function emptyMessage({mode, required, ranking}){
 }
 
 function renderCandidates(ranking, {mode, required}){
-  const {fits, ruledOut, dropIns, reviews, equivalentOnly} = ranking;
+  const {fits, ruledOut, dropIns, reviews, equivalentOnly, demand, onTime} = ranking;
   $("cand-h").textContent = fits.length
     ? (mode === "better" ? "Better than the original, most upgrades first" : "Candidates, best first")
     : (mode === "better" ? "No upgrade found" : "No candidate fits every rule");
 
   const tally = [];
+  if (onTime != null)  tally.push(`<li class="v-neutral">${onTime} usable by ${fmtWeek(demand.needBy, demand.today)}</li>`);
   if (dropIns)         tally.push(`<li class="v-ok">${dropIns} drop-in</li>`);
   if (reviews)         tally.push(`<li class="v-warn">${reviews} need review</li>`);
   if (equivalentOnly)  tally.push(`<li class="v-neutral">${equivalentOnly} equivalent only</li>`);
   if (ruledOut.length) tally.push(`<li class="v-bad">${ruledOut.length} ruled out</li>`);
   $("tally").innerHTML = tally.join("");
 
+  const earliest = fits.length ? fits.reduce((a, b) => b.plan.usableDate < a.plan.usableDate ? b : a) : null;
+  const lateNote = onTime === 0 && earliest
+    ? `<p class="empty lead-note">None of these can be approved and in hand by ${fmtWeek(demand.needBy, demand.today)}. The earliest is ${esc(earliest.part.pn)}, usable ${fmtWeek(earliest.plan.usableDate, demand.today)}.</p>`
+    : "";
   $("cand-body").innerHTML = fits.length
-    ? `<ol class="tape" aria-label="${mode === "better" ? "Upgrades ranked by number of improvements" : "Candidates ranked by fit, then lead time"}">${fits.map(r => `
+    ? `${lateNote}<ol class="tape" aria-label="${mode === "better" ? "Upgrades ranked by number of improvements" : demand.needBy ? "Candidates ranked by on-time, fit, then usable date" : "Candidates ranked by fit, then usable date"}">${fits.map(r => `
         <li class="pocket">
           <div class="pocket-head">
             <h3><span class="pn">${esc(r.part.pn)}</span> <span class="maker">${esc(r.part.mfr)}</span></h3>
@@ -75,6 +120,7 @@ function renderCandidates(ranking, {mode, required}){
           <ul class="checks">${r.checks.map(k => `
             <li><span class="mark m-${k.state}" aria-hidden="true">${MARK[k.state]}</span><span><span class="sr-only">${MARK_SR[k.state]}: </span>${esc(k.text)}</span></li>`).join("")}
           </ul>
+          ${renderPlan(r, demand)}
           <p class="avail"><span>Stock <b>${fmtStock(r.part.stock)}</b></span><span>Lead time <b>${r.part.lead} wk</b></span><span>Operating temp <b>${DIEL_TEMP[r.part.diel]}</b></span></p>
         </li>`).join("")}</ol>`
     : `<p class="empty">${esc(emptyMessage({mode, required, ranking}))}</p>`;
@@ -86,7 +132,7 @@ function renderCandidates(ranking, {mode, required}){
     <li><span class="pn">${esc(r.part.pn)}</span> <span class="maker">${esc(r.part.mfr)}</span>
     <span class="why">${r.fails.map(esc).join("; ")}</span></li>`).join("");
 
-  return `${fits.length} shown, ${ruledOut.length} ruled out.`;
+  return `${fits.length} shown, ${ruledOut.length} ruled out.${onTime != null ? ` ${onTime} usable by the need date.` : ""}`;
 }
 
 function setHash(o){
@@ -109,11 +155,16 @@ function search(query, {focusResults = true} = {}){
   if (error){ showError(error); return; }
   clearError();
 
-  const {mode, grade} = getOptions();
+  const {mode, grade, qty, demand} = getOptions();
+  const qtyBad = Number.isNaN(qty);
+  $("qty-err").hidden = !qtyBad;
+  $("qty-err").textContent = qtyBad ? "Enter the quantity as a number, like 250000 or 250k. Results below ignore it." : "";
+  if (qtyBad) $("qty").setAttribute("aria-invalid", "true"); else $("qty").removeAttribute("aria-invalid");
+
   const required = grade === "same" ? spec.grade : grade;
-  const ranking = rank(spec, {mode, required});
+  const ranking = rank(spec, {mode, required, demand});
   current = {query, spec};
-  renderOriginal(spec, required);
+  renderOriginal(spec, required, ranking);
   const summary = renderCandidates(ranking, {mode, required});
   $("results").hidden = false;
   setHash(spec);
@@ -127,9 +178,11 @@ function search(query, {focusResults = true} = {}){
 }
 
 /* ---------- Wiring ---------- */
-function setOptions({mode, grade}){
+function setOptions({mode, grade, qty = "", weeks = null}){
   document.querySelector(`input[name="mode"][value="${mode}"]`).checked = true;
   $("grade").value = grade;
+  $("qty").value = qty;
+  $("need").value = weeks ? isoDate(addWeeks(today(), weeks)) : "";
 }
 
 function init(){
