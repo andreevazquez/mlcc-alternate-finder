@@ -2,7 +2,7 @@ import {test, describe} from "node:test";
 import assert from "node:assert/strict";
 import {
   CATALOG, BY_PN, fmtCap, fmtTol, fmtWeek, isoWeek, meetsGrade, parseQuery, parseQty,
-  evaluate, rank, approvalPath, supplyPlan
+  evaluate, rank, approvalPath, supplyPlan, changeType, costPlan, CHECK_ROWS
 } from "../rules.js";
 
 const TODAY = new Date(2026, 10, 2); // Monday, ISO week 45
@@ -180,12 +180,12 @@ describe("missing description fields", () => {
 });
 
 describe("ranking", () => {
-  test("equivalent mode without a need date sorts by verdict, then usable date, then lead time and stock", () => {
+  test("equivalent mode without a need date sorts by type of change, fit, usable date, then lead time and stock", () => {
     const {fits} = rank(BY_PN.get("GRM188R71H104KA93D"), {mode:"equivalent", required:"commercial", demand:{today:TODAY}});
     const order = {ok:0, warn:1};
     for (let i = 1; i < fits.length; i++){
       const a = fits[i - 1], b = fits[i];
-      const cmp = order[a.verdict] - order[b.verdict] || a.plan.usableWeeks - b.plan.usableWeeks
+      const cmp = a.change.order - b.change.order || order[a.verdict] - order[b.verdict] || a.plan.usableWeeks - b.plan.usableWeeks
         || a.part.lead - b.part.lead || b.part.stock - a.part.stock;
       assert.ok(cmp <= 0, `${a.part.pn} should not rank above ${b.part.pn}`);
     }
@@ -193,7 +193,7 @@ describe("ranking", () => {
     assert.equal(fits[0].part.pn, "GCM188R71H104KA57D");
     assert.equal(fits[0].plan.usableWeeks, 1);
   });
-  test("with a need date, on-time parts rank first, drop-ins before reviews", () => {
+  test("with a need date, on-time parts rank first, then the smallest type of change", () => {
     const demand = {qty:250000, needBy:new Date(2026, 10, 30), today:TODAY};
     const r = rank(spec("GRM188R71H104KA93D"), {mode:"equivalent", required:"commercial", demand});
     assert.equal(r.onTime, 4);
@@ -219,9 +219,10 @@ describe("ranking", () => {
     assert.equal(up.fits[0].part.pn, "CL21B106KOQNNNE");
     assert.deepEqual(up.fits[0].upgrades, ["16 V vs 10 V", "X7R vs X5R"]);
   });
-  test("tally counts match the fits", () => {
+  test("tally counts by type of change match the fits", () => {
     const r = rank(BY_PN.get("GRM188R71H104KA93D"), {mode:"equivalent", required:"commercial"});
-    assert.equal(r.dropIns + r.reviews, r.fits.length);
+    assert.equal(r.dropIns + r.minor + r.major, r.fits.length);
+    assert.deepEqual([r.dropIns, r.minor, r.major], [1, 6, 1]);
   });
 });
 
@@ -289,5 +290,73 @@ describe("approval path", () => {
     const gcm = r.fits.find(f => f.part.pn === "GCM188R71H104KA57D"); // 8k in stock, 22 wk lead, 7 wk approval
     assert.equal(gcm.plan.usableWeeks, 22);
     assert.equal(gcm.plan.onTime, false);
+  });
+});
+
+describe("datasheet comparison levels", () => {
+  const o = BY_PN.get("GRM188R71H104KA93D");
+  const levels = (c, required = "commercial", orig = o) =>
+    Object.fromEntries(evaluate(orig, BY_PN.get(c), required).checks.map(k => [k.key, k.level]));
+  test("every check is a row, in a fixed order", () => {
+    assert.deepEqual(evaluate(o, BY_PN.get("CL10B104KB8NNNC"), "commercial").checks.map(k => k.key), CHECK_ROWS);
+  });
+  test("identical specs are green; a new manufacturer and unverified lifecycle are yellow", () => {
+    const l = levels("CL10B104KB8NNNC");
+    for (const k of ["cap", "pkg", "v", "diel", "temp", "tol", "grade"]) assert.equal(l[k], "same", k);
+    assert.equal(l.mfr, "minor");
+    assert.equal(l.life, "minor");
+  });
+  test("same manufacturer is green", () => {
+    assert.equal(levels("GCM188R71H104KA57D").mfr, "same");
+  });
+  test("a higher grade is yellow, not red", () => {
+    assert.equal(levels("GCM188R71H104KA57D").grade, "minor");
+  });
+  test("a higher voltage needs a product engineer (red)", () => {
+    assert.equal(levels("GRM188R72A104KA35D").v, "critical");
+  });
+  test("a dielectric upgrade is red, its wider temperature range yellow", () => {
+    const l = levels("CL21B106KOQNNNE", "commercial", spec("CAP CER 10UF 10V X5R 0805"));
+    assert.equal(l.diel, "critical");
+    assert.equal(l.temp, "minor");
+  });
+  test("a spec missing from the description is red", () => {
+    const l = levels("CL10B104KB8NNNC", "commercial", spec("100n 0603"));
+    assert.equal(l.v, "critical");
+    assert.equal(l.diel, "critical");
+  });
+  test("a tighter tolerance is yellow", () => {
+    const l = levels("CC0603JRNPO9BN101", "commercial", spec("100pF 50V C0G 0603 10%"));
+    assert.equal(l.tol, "minor");
+  });
+});
+
+describe("type of change", () => {
+  const o = BY_PN.get("GRM188R71H104KA93D");
+  const type = (pn, required = "commercial") => {
+    const r = evaluate(o, BY_PN.get(pn), required);
+    return changeType(approvalPath(o, r, required)).type;
+  };
+  test("same manufacturer and fit is a drop-in", () => assert.equal(type("GCM188R71H104KA57D"), "dropin"));
+  test("a new manufacturer is a minor change", () => assert.equal(type("CL10B104KB8NNNC"), "minor"));
+  test("anything a product engineer must review is a major change", () => assert.equal(type("GRM188R72A104KA35D"), "major"));
+  test("an automotive design change is major because of PPAP", () => assert.equal(type("GCM188R71H104KA57D", "automotive"), "major"));
+});
+
+describe("cost", () => {
+  test("unit price, total and difference against the original", () => {
+    const o = BY_PN.get("GRM188R71H104KA93D"); // US$0.0045
+    const c = costPlan(o, BY_PN.get("CC0603KRX7R9BB104"), 250000); // US$0.0022
+    assert.equal(c.unit, 0.0022);
+    assert.equal(Math.round(c.total), 550);
+    assert.equal(Math.round(c.deltaTotal), -575);
+    assert.equal(Math.round(c.deltaPct * 100), -51);
+  });
+  test("without a quantity or an original price there is no total or difference", () => {
+    const c = costPlan(spec("0.1uF 50V X7R 0603"), BY_PN.get("CC0603KRX7R9BB104"), null);
+    assert.deepEqual([c.total, c.deltaUnit, c.deltaPct], [null, null, null]);
+  });
+  test("every catalog part has a simulated price", () => {
+    assert.ok(CATALOG.every(p => typeof p.usd === "number" && p.usd > 0));
   });
 });

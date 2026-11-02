@@ -66,7 +66,7 @@
       </div>
       <p class="hint" id="grade-hint">AEC-Q200 can replace commercial, but not medical.</p>
       <fieldset class="demand">
-        <legend class="field-label">Demand <span class="opt">(optional)</span></legend>
+        <legend class="field-label">Demand and cost <span class="opt">(optional)</span></legend>
         <div class="options">
           <div>
             <label for="qty" class="sub-label">Quantity needed</label>
@@ -76,8 +76,12 @@
             <label for="need" class="sub-label">Needed by</label>
             <input class="text-in" id="need" name="need" type="date" aria-describedby="demand-hint">
           </div>
+          <div>
+            <label for="rate" class="sub-label">Exchange rate, MXN per USD</label>
+            <input class="text-in" id="rate" name="rate" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 18.50" aria-describedby="demand-hint qty-err">
+          </div>
         </div>
-        <p class="hint" id="demand-hint">Adds stock coverage, approval time and an on-time check to every candidate.</p>
+        <p class="hint" id="demand-hint">Adds stock coverage, approval time, an on-time check and total cost to every candidate. Prices are in USD; add your exchange rate to see pesos too.</p>
         <p class="error" id="qty-err" role="alert" hidden></p>
       </fieldset>
       <p class="hint" id="q-hint"></p>
@@ -108,8 +112,9 @@
 
   <footer>
     <p><b>How it decides.</b> Capacitance and case size must match. Voltage rating can only go up. Dielectric can only go up (Y5V, X5R, X7R, C0G). Tolerance can only get tighter. The alternate must carry the grade the design requires, and grades aren’t a ladder: an AEC-Q200 automotive part can replace a commercial one, but neither qualifies for medical use without the manufacturer’s medical-grade series. A part that passes but changes something, like a higher voltage rating that can mean a taller part, is marked for review. A new manufacturer doesn’t change fit, but it does need an entry on the approved manufacturer list (AML), so it’s noted. A part marked end of life is ruled out, and one not recommended for new designs needs review. “Better than” shows only parts that improve at least one spec or the grade while giving nothing up.</p>
-    <p><b>How it plans.</b> A part can only go into production once it’s both approved and in hand. Supply is immediate if distribution stock covers the quantity, otherwise it’s the factory lead time. Approval adds up the steps the change needs, using typical durations: 1 week to add the part number to the AML and ERP item master, 2 weeks of engineering review for flagged items, 3 weeks of samples and build validation for a new manufacturer, and 6 weeks of PPAP and customer approval for an automotive design. It assumes you order while approval runs, so the part is usable at whichever comes later. With a need date, parts that make it rank first, then drop-ins before parts that need review.</p>
-    <p><b>About the data.</b> This demo catalog covers 0.1 µF, 1 µF, 10 µF and 100 pF ceramic capacitors from six manufacturers, in commercial and AEC-Q200 automotive grades; it has no medical-grade parts, so a medical search shows what’s required instead. Specs follow each manufacturer’s published part-numbering scheme; stock and lead times are simulated, lifecycle status isn’t verified yet, and approval durations are typical assumptions that vary by company and customer. Always confirm against the datasheet before approving a substitute.</p>
+    <p><b>How it compares.</b> Every spec of each candidate is set against the original. Green means the same. Yellow means it differs without affecting the design: a tighter tolerance, a higher grade, a wider temperature range, a new manufacturer, or a lifecycle status that still needs checking. Red means a product engineer has to look at it: a higher voltage rating, a different dielectric, a spec your description left out, or a part not recommended for new designs. The type of change follows from that: a drop-in only needs an AML entry, a minor change adds samples for a new manufacturer, and a major change needs a product engineer or, in automotive, PPAP and customer approval.</p>
+    <p><b>How it plans.</b> A part can only go into production once it’s both approved and in hand. Supply is immediate if distribution stock covers the quantity, otherwise it’s the factory lead time. Approval adds up the steps the change needs, using typical durations: 1 week to add the part number to the AML and ERP item master, 2 weeks of engineering review for flagged items, 3 weeks of samples and build validation for a new manufacturer, and 6 weeks of PPAP and customer approval for an automotive design. It assumes you order while approval runs, so the part is usable at whichever comes later. With a need date, parts that make it rank first, then the smallest type of change, then the soonest usable.</p>
+    <p><b>About the data.</b> This demo catalog covers 0.1 µF, 1 µF, 10 µF and 100 pF ceramic capacitors from six manufacturers, in commercial and AEC-Q200 automotive grades; it has no medical-grade parts, so a medical search shows what’s required instead. Specs follow each manufacturer’s published part-numbering scheme; stock, lead times and prices are simulated, lifecycle status isn’t verified yet, and approval durations are typical assumptions that vary by company and customer. Always confirm against the datasheet before approving a substitute.</p>
     <p>Built by Ricardo Vázquez, supply chain consultant who has implemented Kinaxis Maestro planning for pharma, food and aerospace companies. Before that, I led electronic-component planning and purchasing in automotive electronics manufacturing, where finding alternates by hand was a weekly fire drill. This is the checklist I wish my team had had.</p>
   </footer>
 </main>

@@ -119,6 +119,34 @@ details.path summary{padding:10px 0;min-height:44px;color:var(--accent)}
 .steps li{padding:3px 0}
 .steps .wk{color:var(--muted);white-space:nowrap}
 .lead-note{margin:0 0 12px}
+.change-why{margin:6px 0 0;color:var(--muted);font-size:.93rem}
+.m-same{color:var(--ok)} .m-minor{color:var(--warn)} .m-critical{color:var(--bad)}
+
+/* comparison */
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;list-style:none;padding:0;margin:0 0 14px;font-size:.9rem}
+.legend li{display:flex;gap:8px;align-items:center}
+.sw{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:4px;font-weight:700;font-size:.8rem;border:1.5px solid}
+.sw-same{background:var(--ok-bg);color:var(--ok)} .sw-minor{background:var(--warn-bg);color:var(--warn)} .sw-critical{background:var(--bad-bg);color:var(--bad)}
+.cmp-h{font:inherit;font-weight:600;margin:0 0 8px}
+.cmp-wrap{position:relative;overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface);-webkit-overflow-scrolling:touch}
+.cmp-wrap:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.cmp{border-collapse:collapse;width:100%;font-size:.88rem;line-height:1.35}
+.cmp th,.cmp td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;min-width:8.5em}
+.cmp tbody tr:last-child > *{border-bottom:0}
+.cmp thead th{font-weight:600;background:var(--surface)}
+.cmp th[scope="row"],.cmp thead th:first-child{position:sticky;left:0;z-index:1;background:var(--surface);color:var(--muted);font-weight:600;min-width:7em;box-shadow:1px 0 0 var(--line)}
+.cmp tr.sec th{background:var(--bg);color:var(--muted);font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;padding:6px 10px;position:static;box-shadow:none}
+.cmp td.orig{color:var(--ink);font-weight:600}
+.cmp .lv-same{background:var(--ok-bg)} .cmp .lv-minor{background:var(--warn-bg)} .cmp .lv-critical{background:var(--bad-bg)}
+.cmp td .mark{display:inline-block;width:1.1em;font-weight:700}
+.cmp .lv-same .mark{color:var(--ok)} .cmp .lv-minor .mark{color:var(--warn)} .cmp .lv-critical .mark{color:var(--bad)}
+.mxn{display:block}
+.cmp .pn{font-size:.82rem}
+.cmp thead .pn{display:block;word-break:break-all}
+.cell-note{display:block;font-size:.8rem;font-weight:400;color:var(--muted);margin-top:2px}
+.cmp td[class^="lv-"] .cell-note{color:var(--ink);opacity:.8}
+.cmp .verdict{display:inline-block;font-size:.8rem}
+.cmp-note{margin:8px 0 22px}
 .empty{color:var(--ink);background:var(--surface);border-radius:6px;padding:16px;margin:0;border:1px solid var(--line)}
 
 details{margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:6px}

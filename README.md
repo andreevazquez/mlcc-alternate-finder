@@ -16,7 +16,7 @@ Options that shape the search:
 
 - **Looking for:** *Equivalent* or *Better than original*.
 - **Grade required:** *Same as the original*, *Commercial*, *Automotive (AEC-Q200)* or *Medical*.
-- **Demand (optional):** quantity needed (`250000`, `250,000` or `250k`) and the date you need it by.
+- **Demand and cost (optional):** quantity needed (`250000`, `250,000` or `250k`), the date you need it by, and your exchange rate in MXN per USD.
 
 ## Substitution rules
 
@@ -31,6 +31,24 @@ Options that shape the search:
 | Missing fields | Anything a description leaves out is flagged for review, never silently passed. |
 | Lifecycle | End of life is ruled out; not recommended for new designs (NRND) needs review. Until a part’s status is verified, it shows as a note to check. |
 | Manufacturer | A new manufacturer is an information note (it needs an entry on the approved manufacturer list, AML); it doesn’t change the verdict. |
+
+## Datasheet comparison
+
+The top three candidates appear side by side with the original, and every candidate card uses the same colors:
+
+| Color | Meaning | Examples |
+| --- | --- | --- |
+| Green ✓ | Same as the original | Same capacitance, case, voltage, dielectric, manufacturer |
+| Yellow ≈ | Differs, without affecting the design | Tighter tolerance, AEC-Q200 where commercial is required, wider temperature range, new manufacturer, lifecycle not yet verified |
+| Red ! | Needs a product engineer | Higher voltage rating (taller part), different dielectric, a spec the description left out, NRND |
+
+Each candidate also gets a **type of change**, from the steps it needs:
+
+- **Drop-in:** same manufacturer and fit; only an AML entry.
+- **Minor change:** new manufacturer; samples and an AML entry, no design change.
+- **Major change:** a product engineer must review it or, for an automotive design, it needs PPAP and customer approval.
+
+Below the specs, the table shows type of change, lead time, stock, the date each part is usable in production, the simulated unit price and, with a quantity, the total cost and the difference against the original, in USD and, with an exchange rate, MXN.
 
 ## Planning: when can each alternate go into production?
 
@@ -53,14 +71,14 @@ Durations are assumptions that vary by company and customer; they live in `APPRO
 
 ## Ranking
 
-- *Equivalent:* with a need date, parts usable on time come first. Then drop-ins before parts that need review, then soonest usable, then shortest lead time and most stock.
+- *Equivalent:* with a need date, parts usable on time come first. Then the smallest type of change (drop-in, minor, major), then fit, then soonest usable, then shortest lead time and most stock.
 - *Better than original:* only candidates that improve at least one spec or the grade while giving nothing up, sorted by number of improvements, then the same order as above. Each shows what it’s better on.
 
 ## About the data
 
 - The catalog holds **30 MLCCs** (100 pF, 0.1 µF, 1 µF and 10 µF) from Murata, TDK, Samsung, Yageo, KEMET and KYOCERA AVX, in commercial and AEC-Q200 grades.
 - **Specs follow each manufacturer’s part-numbering scheme but have not all been verified against datasheets.** [DATA_CHECK.md](DATA_CHECK.md) tracks that verification. Always confirm against the datasheet before approving a substitute.
-- **Stock and lead times are simulated.**
+- **Stock, lead times and prices are simulated.** Prices are illustrative unit prices at reel quantity, in USD.
 - **Lifecycle status (active, NRND, EOL) isn’t verified for any part yet.** It’s a column in DATA_CHECK.md; once filled in, add it to the part in `rules.js` as `life:"Active"`, `"NRND"` or `"EOL"`.
 - **There are no medical-grade parts, on purpose.** Inventing part numbers would be worse than leaving them out. A medical search explains what’s required instead: the manufacturer’s medical-grade series and, for life-support or implantable use, the manufacturer’s written approval.
 

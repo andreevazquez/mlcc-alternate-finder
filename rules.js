@@ -2,38 +2,39 @@
 // No DOM access, so it runs unchanged in the browser and under `node --test`.
 
 /* ---------- Data ---------- */
-// cap: picofarads · tol: percent (Y5V stored as 80, its worst case) · stock/lead: simulated
+// cap: picofarads · tol: percent (Y5V stored as 80, its worst case)
+// stock, lead (weeks) and usd (unit price at reel quantity) are simulated
 const RAW = [
-  {pn:"GRM188R71H104KA93D",  mfr:"Murata",      cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:0,       lead:26},
-  {pn:"C1608X7R1H104K080AA", mfr:"TDK",         cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:120000,  lead:4},
-  {pn:"CL10B104KB8NNNC",     mfr:"Samsung",     cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:480000,  lead:2},
-  {pn:"CC0603KRX7R9BB104",   mfr:"Yageo",       cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:950000,  lead:1},
-  {pn:"C0603C104K5RACTU",    mfr:"KEMET",       cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:36000,   lead:8},
-  {pn:"06035C104KAT2A",      mfr:"KYOCERA AVX", cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:12000,   lead:14},
-  {pn:"GCM188R71H104KA57D",  mfr:"Murata",      cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:true,  stock:8000,    lead:22},
-  {pn:"CGA3E2X7R1H104K080AA",mfr:"TDK",         cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:true,  stock:64000,   lead:6},
-  {pn:"GRM188R72A104KA35D",  mfr:"Murata",      cap:100000,   v:100, pkg:"0603", diel:"X7R", tol:10, auto:false, stock:210000,  lead:3},
-  {pn:"CL10F104ZB8NNNC",     mfr:"Samsung",     cap:100000,   v:50,  pkg:"0603", diel:"Y5V", tol:80, auto:false, stock:700000,  lead:1},
-  {pn:"GRM155R71C104KA88D",  mfr:"Murata",      cap:100000,   v:16,  pkg:"0402", diel:"X7R", tol:10, auto:false, stock:1500000, lead:2},
-  {pn:"CL21B104KBCNNNC",     mfr:"Samsung",     cap:100000,   v:50,  pkg:"0805", diel:"X7R", tol:10, auto:false, stock:300000,  lead:2},
-  {pn:"C1608X7R1E104K080AA", mfr:"TDK",         cap:100000,   v:25,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:260000,  lead:3},
-  {pn:"GRM21BR61A106KE19L",  mfr:"Murata",      cap:10000000, v:10,  pkg:"0805", diel:"X5R", tol:10, auto:false, stock:0,       lead:30},
-  {pn:"C2012X5R1A106K125AB", mfr:"TDK",         cap:10000000, v:10,  pkg:"0805", diel:"X5R", tol:10, auto:false, stock:40000,   lead:9},
-  {pn:"CL21A106KAYNNNE",     mfr:"Samsung",     cap:10000000, v:25,  pkg:"0805", diel:"X5R", tol:10, auto:false, stock:220000,  lead:3},
-  {pn:"CC0805KKX5R6BB106",   mfr:"Yageo",       cap:10000000, v:10,  pkg:"0805", diel:"X5R", tol:10, auto:false, stock:380000,  lead:2},
-  {pn:"GRM21BR61E106KA73L",  mfr:"Murata",      cap:10000000, v:25,  pkg:"0805", diel:"X5R", tol:10, auto:false, stock:18000,   lead:12},
-  {pn:"CL21B106KOQNNNE",     mfr:"Samsung",     cap:10000000, v:16,  pkg:"0805", diel:"X7R", tol:10, auto:false, stock:90000,   lead:5},
-  {pn:"GRM188R61A106KE69D",  mfr:"Murata",      cap:10000000, v:10,  pkg:"0603", diel:"X5R", tol:20, auto:false, stock:500000,  lead:2},
-  {pn:"GRM155R61A105KE15D",  mfr:"Murata",      cap:1000000,  v:10,  pkg:"0402", diel:"X5R", tol:10, auto:false, stock:0,       lead:24},
-  {pn:"C1005X5R1A105K050BB", mfr:"TDK",         cap:1000000,  v:10,  pkg:"0402", diel:"X5R", tol:10, auto:false, stock:410000,  lead:2},
-  {pn:"CL05A105KA5NQNC",     mfr:"Samsung",     cap:1000000,  v:25,  pkg:"0402", diel:"X5R", tol:10, auto:false, stock:1200000, lead:1},
-  {pn:"CC0402KRX5R6BB105",   mfr:"Yageo",       cap:1000000,  v:10,  pkg:"0402", diel:"X5R", tol:10, auto:false, stock:85000,   lead:6},
-  {pn:"GRM1885C1H101JA01D",  mfr:"Murata",      cap:100,      v:50,  pkg:"0603", diel:"C0G", tol:5,  auto:false, stock:0,       lead:20},
-  {pn:"C1608C0G1H101J080AA", mfr:"TDK",         cap:100,      v:50,  pkg:"0603", diel:"C0G", tol:5,  auto:false, stock:150000,  lead:3},
-  {pn:"C0603C101J5GACTU",    mfr:"KEMET",       cap:100,      v:50,  pkg:"0603", diel:"C0G", tol:5,  auto:false, stock:44000,   lead:7},
-  {pn:"CC0603JRNPO9BN101",   mfr:"Yageo",       cap:100,      v:50,  pkg:"0603", diel:"C0G", tol:5,  auto:false, stock:620000,  lead:1},
-  {pn:"GCM1885C1H101JA16D",  mfr:"Murata",      cap:100,      v:50,  pkg:"0603", diel:"C0G", tol:5,  auto:true,  stock:26000,   lead:10},
-  {pn:"CL10B101KB8NNNC",     mfr:"Samsung",     cap:100,      v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:340000,  lead:2}
+  {pn:"GRM188R71H104KA93D",  mfr:"Murata",      cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:0,       lead:26, usd:0.0045},
+  {pn:"C1608X7R1H104K080AA", mfr:"TDK",         cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:120000,  lead:4, usd:0.0042},
+  {pn:"CL10B104KB8NNNC",     mfr:"Samsung",     cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:480000,  lead:2, usd:0.0028},
+  {pn:"CC0603KRX7R9BB104",   mfr:"Yageo",       cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:950000,  lead:1, usd:0.0022},
+  {pn:"C0603C104K5RACTU",    mfr:"KEMET",       cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:36000,   lead:8, usd:0.0050},
+  {pn:"06035C104KAT2A",      mfr:"KYOCERA AVX", cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:12000,   lead:14, usd:0.0060},
+  {pn:"GCM188R71H104KA57D",  mfr:"Murata",      cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:true,  stock:8000,    lead:22, usd:0.0095},
+  {pn:"CGA3E2X7R1H104K080AA",mfr:"TDK",         cap:100000,   v:50,  pkg:"0603", diel:"X7R", tol:10, auto:true,  stock:64000,   lead:6, usd:0.0088},
+  {pn:"GRM188R72A104KA35D",  mfr:"Murata",      cap:100000,   v:100, pkg:"0603", diel:"X7R", tol:10, auto:false, stock:210000,  lead:3, usd:0.0070},
+  {pn:"CL10F104ZB8NNNC",     mfr:"Samsung",     cap:100000,   v:50,  pkg:"0603", diel:"Y5V", tol:80, auto:false, stock:700000,  lead:1, usd:0.0015},
+  {pn:"GRM155R71C104KA88D",  mfr:"Murata",      cap:100000,   v:16,  pkg:"0402", diel:"X7R", tol:10, auto:false, stock:1500000, lead:2, usd:0.0030},
+  {pn:"CL21B104KBCNNNC",     mfr:"Samsung",     cap:100000,   v:50,  pkg:"0805", diel:"X7R", tol:10, auto:false, stock:300000,  lead:2, usd:0.0040},
+  {pn:"C1608X7R1E104K080AA", mfr:"TDK",         cap:100000,   v:25,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:260000,  lead:3, usd:0.0035},
+  {pn:"GRM21BR61A106KE19L",  mfr:"Murata",      cap:10000000, v:10,  pkg:"0805", diel:"X5R", tol:10, auto:false, stock:0,       lead:30, usd:0.0300},
+  {pn:"C2012X5R1A106K125AB", mfr:"TDK",         cap:10000000, v:10,  pkg:"0805", diel:"X5R", tol:10, auto:false, stock:40000,   lead:9, usd:0.0320},
+  {pn:"CL21A106KAYNNNE",     mfr:"Samsung",     cap:10000000, v:25,  pkg:"0805", diel:"X5R", tol:10, auto:false, stock:220000,  lead:3, usd:0.0280},
+  {pn:"CC0805KKX5R6BB106",   mfr:"Yageo",       cap:10000000, v:10,  pkg:"0805", diel:"X5R", tol:10, auto:false, stock:380000,  lead:2, usd:0.0220},
+  {pn:"GRM21BR61E106KA73L",  mfr:"Murata",      cap:10000000, v:25,  pkg:"0805", diel:"X5R", tol:10, auto:false, stock:18000,   lead:12, usd:0.0450},
+  {pn:"CL21B106KOQNNNE",     mfr:"Samsung",     cap:10000000, v:16,  pkg:"0805", diel:"X7R", tol:10, auto:false, stock:90000,   lead:5, usd:0.0380},
+  {pn:"GRM188R61A106KE69D",  mfr:"Murata",      cap:10000000, v:10,  pkg:"0603", diel:"X5R", tol:20, auto:false, stock:500000,  lead:2, usd:0.0250},
+  {pn:"GRM155R61A105KE15D",  mfr:"Murata",      cap:1000000,  v:10,  pkg:"0402", diel:"X5R", tol:10, auto:false, stock:0,       lead:24, usd:0.0040},
+  {pn:"C1005X5R1A105K050BB", mfr:"TDK",         cap:1000000,  v:10,  pkg:"0402", diel:"X5R", tol:10, auto:false, stock:410000,  lead:2, usd:0.0042},
+  {pn:"CL05A105KA5NQNC",     mfr:"Samsung",     cap:1000000,  v:25,  pkg:"0402", diel:"X5R", tol:10, auto:false, stock:1200000, lead:1, usd:0.0030},
+  {pn:"CC0402KRX5R6BB105",   mfr:"Yageo",       cap:1000000,  v:10,  pkg:"0402", diel:"X5R", tol:10, auto:false, stock:85000,   lead:6, usd:0.0028},
+  {pn:"GRM1885C1H101JA01D",  mfr:"Murata",      cap:100,      v:50,  pkg:"0603", diel:"C0G", tol:5,  auto:false, stock:0,       lead:20, usd:0.0030},
+  {pn:"C1608C0G1H101J080AA", mfr:"TDK",         cap:100,      v:50,  pkg:"0603", diel:"C0G", tol:5,  auto:false, stock:150000,  lead:3, usd:0.0032},
+  {pn:"C0603C101J5GACTU",    mfr:"KEMET",       cap:100,      v:50,  pkg:"0603", diel:"C0G", tol:5,  auto:false, stock:44000,   lead:7, usd:0.0045},
+  {pn:"CC0603JRNPO9BN101",   mfr:"Yageo",       cap:100,      v:50,  pkg:"0603", diel:"C0G", tol:5,  auto:false, stock:620000,  lead:1, usd:0.0020},
+  {pn:"GCM1885C1H101JA16D",  mfr:"Murata",      cap:100,      v:50,  pkg:"0603", diel:"C0G", tol:5,  auto:true,  stock:26000,   lead:10, usd:0.0070},
+  {pn:"CL10B101KB8NNNC",     mfr:"Samsung",     cap:100,      v:50,  pkg:"0603", diel:"X7R", tol:10, auto:false, stock:340000,  lead:2, usd:0.0018}
 ];
 export const CATALOG = Object.freeze(RAW.map(({auto, ...p}) => Object.freeze({...p, grade: auto ? "automotive" : "commercial"})));
 export const BY_PN = new Map(CATALOG.map(p => [p.pn, p]));
@@ -107,34 +108,63 @@ export function parseQuery(raw){
 }
 
 /* ---------- Rules ---------- */
-// Each check: {state: ok|warn|bad|info, text}. "info" never changes the verdict.
+// Each check is one row of the datasheet comparison:
+//   {key, label, orig, value, state, level, text}
+// state (ok|warn|bad|info) decides the fit verdict; "info" never changes it.
+// level is what the comparison colors show:
+//   same     – identical (green)
+//   minor    – differs, but doesn't affect the design (yellow)
+//   critical – needs a product engineer, or rules the part out (red)
 // upgrades: the specs where the candidate is strictly better than what's required.
+const LEVEL_OF = {ok:"same", info:"minor", warn:"critical", bad:"critical"};
+const TEMP_RANGE = {Y5V:[-30, 85], X5R:[-55, 85], X7R:[-55, 125], C0G:[-55, 125]};
+export const CHECK_ROWS = ["cap", "pkg", "v", "diel", "temp", "tol", "grade", "life", "mfr"];
+
 export function evaluate(o, c, required){
   const checks = [], upgrades = [];
-  const add = (state, text) => checks.push({state, text});
+  let row = {};
+  const at = (key, label, orig, value) => { row = {key, label, orig, value}; };
+  const add = (state, text, level = LEVEL_OF[state]) => checks.push({...row, state, level, text});
+  const spec = v => v == null ? "Not specified" : v;
 
+  at("cap", "Capacitance", fmtCap(o.cap), fmtCap(c.cap));
   add(c.cap === o.cap ? "ok" : "bad",
       c.cap === o.cap ? `Capacitance ${fmtCap(c.cap)}` : `Capacitance ${fmtCap(c.cap)}, needs ${fmtCap(o.cap)}`);
 
+  at("pkg", "Case size", spec(o.pkg), c.pkg);
   if (o.pkg == null)        add("warn", `Case ${c.pkg}: you didn’t give one, confirm the footprint`);
   else if (c.pkg === o.pkg) add("ok",   `Case ${c.pkg}, same footprint`);
   else                      add("bad",  `Case ${c.pkg} won’t fit the ${o.pkg} footprint`);
 
+  at("v", "Rated voltage", fmtVolt(o.v), fmtVolt(c.v));
   if (o.v == null)      add("warn", `Rated ${c.v} V: you didn’t give a voltage, confirm it covers the circuit`);
   else if (c.v === o.v) add("ok",   `Rated ${c.v} V`);
   else if (c.v > o.v){  add("warn", `Rated ${c.v} V, up from ${o.v} V: check part height`); upgrades.push(`${c.v} V vs ${o.v} V`); }
   else                  add("bad",  `Rated ${c.v} V, below the ${o.v} V required`);
 
+  at("diel", "Dielectric", spec(o.diel), c.diel);
   if (o.diel == null)                             add("warn", `Dielectric ${c.diel}: you didn’t give one, confirm with engineering`);
   else if (c.diel === o.diel)                     add("ok",   `Dielectric ${c.diel}`);
   else if (DIEL_RANK[c.diel] > DIEL_RANK[o.diel]){ add("warn", `${c.diel} instead of ${o.diel}: more stable, confirm with engineering`); upgrades.push(`${c.diel} vs ${o.diel}`); }
   else                                            add("bad",  `${c.diel} is a downgrade from ${o.diel}: drifts more with temperature and voltage`);
 
+  at("temp", "Operating temp", o.diel ? DIEL_TEMP[o.diel] : "Not specified", DIEL_TEMP[c.diel]);
+  const [cLo, cHi] = TEMP_RANGE[c.diel];
+  if (o.diel == null) add("info", `Operating temp ${DIEL_TEMP[c.diel]}`);
+  else {
+    const [oLo, oHi] = TEMP_RANGE[o.diel];
+    if (cLo === oLo && cHi === oHi)  add("ok",  `Operating temp ${DIEL_TEMP[c.diel]}`);
+    else if (cLo <= oLo && cHi >= oHi) add("ok", `Operating temp ${DIEL_TEMP[c.diel]}, wider than needed`, "minor");
+    else                             add("bad", `Operating temp ${DIEL_TEMP[c.diel]}, narrower than ${DIEL_TEMP[o.diel]}`);
+  }
+
+  at("tol", "Tolerance", fmtTol(o.tol), fmtTol(c.tol));
   if (o.tol == null)        add("info", `Tolerance ${fmtTol(c.tol)}`);
   else if (c.tol === o.tol) add("ok",   `Tolerance ${fmtTol(c.tol)}`);
-  else if (c.tol < o.tol){  add("ok",   `Tolerance ${fmtTol(c.tol)}, tighter than needed`); upgrades.push(`${fmtTol(c.tol)} vs ${fmtTol(o.tol)}`); }
+  else if (c.tol < o.tol){  add("ok",   `Tolerance ${fmtTol(c.tol)}, tighter than needed`, "minor"); upgrades.push(`${fmtTol(c.tol)} vs ${fmtTol(o.tol)}`); }
   else                      add("bad",  `Tolerance ${fmtTol(c.tol)}, looser than ${fmtTol(o.tol)}`);
 
+  at("grade", "Grade", GRADES[required].label + (required === o.grade ? "" : " (required)"), GRADES[c.grade].label);
   if (!meetsGrade(c.grade, required)){
     add("bad", required === "medical"
       ? `${GRADES[c.grade].label}, not released for medical use`
@@ -142,18 +172,21 @@ export function evaluate(o, c, required){
   } else if (c.grade === required){
     add("ok", required === "commercial" ? "Commercial grade" : `${GRADES[c.grade].label}, as required`);
   } else {
-    add("ok", `${GRADES[c.grade].label}, above the ${GRADES[required].short} requirement`);
+    add("ok", `${GRADES[c.grade].label}, above the ${GRADES[required].short} requirement`, "minor");
     upgrades.push(GRADES[c.grade].short);
   }
 
   // Lifecycle: no catalog part is verified yet, so this stays a note until DATA_CHECK.md fills it in.
+  at("life", "Lifecycle", o.fromPart ? (o.life || "Not verified") : "—", c.life || "Not verified");
   if (c.life === "EOL")       add("bad",  "End of life: don’t approve it as an alternate");
   else if (c.life === "NRND") add("warn", "Not recommended for new designs: check last-time-buy dates");
   else if (c.life === "Active") add("ok", "Lifecycle: active");
   else                        add("info", "Lifecycle not verified: check active, NRND or EOL");
 
-  if (o.mfr) add("info", c.mfr === o.mfr ? `Same manufacturer, already on your AML` : `New manufacturer: needs an AML entry`);
-  else       add("info", `Confirm ${c.mfr} is on your AML`);
+  at("mfr", "Manufacturer", o.mfr || "Not specified", c.mfr);
+  if (!o.mfr)              add("info", `Confirm ${c.mfr} is on your AML`);
+  else if (c.mfr === o.mfr) add("info", `Same manufacturer, already on your AML`, "same");
+  else                     add("info", `New manufacturer: needs an AML entry`);
 
   const verdict = checks.some(k => k.state === "bad") ? "bad" : checks.some(k => k.state === "warn") ? "warn" : "ok";
   return {part:c, checks, verdict, upgrades, fails:checks.filter(k => k.state === "bad").map(k => k.text)};
@@ -180,6 +213,31 @@ export function approvalPath(o, r, required){
   keys.push("aml");
   const steps = keys.map(k => ({key:k, ...APPROVAL_STEPS[k]}));
   return {steps, weeks:steps.reduce((n, s) => n + s.weeks, 0)};
+}
+
+// How big the change is, from the steps it needs.
+export const CHANGE_TYPES = {
+  dropin:{label:"Drop-in",      order:0, level:"same"},
+  minor: {label:"Minor change", order:1, level:"minor"},
+  major: {label:"Major change", order:2, level:"critical"}
+};
+export function changeType({steps}){
+  const keys = steps.map(s => s.key);
+  if (keys.includes("eng"))  return {type:"major", ...CHANGE_TYPES.major, reason:"Needs a product engineer to review the flagged specs"};
+  if (keys.includes("ppap")) return {type:"major", ...CHANGE_TYPES.major, reason:"Automotive: needs PPAP and customer approval"};
+  if (keys.includes("mfr"))  return {type:"minor", ...CHANGE_TYPES.minor, reason:"New manufacturer: samples and AML entry, no design change"};
+  if (keys.includes("mfrChk")) return {type:"minor", ...CHANGE_TYPES.minor, reason:"Samples and AML entry unless the manufacturer is already approved"};
+  return {type:"dropin", ...CHANGE_TYPES.dropin, reason:"Same manufacturer and fit: AML entry only"};
+}
+
+// Unit price and, with a quantity, total cost and the difference against the original (USD).
+export function costPlan(o, c, qty){
+  const unit = c.usd;
+  const total = qty == null ? null : unit * qty;
+  const base = o.usd ?? null;
+  const deltaUnit = base == null ? null : unit - base;
+  return {unit, total, deltaUnit, deltaTotal: deltaUnit == null || qty == null ? null : deltaUnit * qty,
+          deltaPct: base ? deltaUnit / base : null};
 }
 
 // "250000", "250,000", "250k", "1.2M" -> pieces. Empty -> null. Anything else -> NaN.
@@ -227,19 +285,24 @@ function plan(o, r, required, demand){
   return {approval, supply, usableWeeks, usableDate, onTime, lateWeeks};
 }
 
-// Equivalent: usable by the need date first (when given), then lowest risk (drop-in before review),
+// Equivalent: usable by the need date first (when given), then the smallest change
+// (drop-in, minor, major), then fit (no review items first),
 // then soonest usable in production (approval and supply), then lead time and stock.
 // Better than: only parts that improve something and give nothing up, most upgrades first.
 export function rank(o, {mode, required, demand = {}}){
   demand = {qty:null, needBy:null, today:new Date(), ...demand};
   const results = CATALOG.filter(p => p.pn !== o.pn && p.cap === o.cap).map(p => {
     const r = evaluate(o, p, required);
-    if (r.verdict !== "bad") r.plan = plan(o, r, required, demand);
+    if (r.verdict !== "bad"){
+      r.plan = plan(o, r, required, demand);
+      r.change = changeType(r.plan.approval);
+      r.cost = costPlan(o, p, demand.qty);
+    }
     return r;
   });
   const byAvailability = (a, b) => a.part.lead - b.part.lead || b.part.stock - a.part.stock;
   const byFit = (a, b) => (b.plan.onTime === true) - (a.plan.onTime === true)
-    || VERDICT_ORDER[a.verdict] - VERDICT_ORDER[b.verdict]
+    || a.change.order - b.change.order || VERDICT_ORDER[a.verdict] - VERDICT_ORDER[b.verdict]
     || a.plan.usableWeeks - b.plan.usableWeeks || byAvailability(a, b);
 
   const passing = results.filter(r => r.verdict !== "bad");
@@ -256,8 +319,10 @@ export function rank(o, {mode, required, demand = {}}){
   const original = o.fromPart ? supplyPlan(o, demand) : null;
   return {
     fits, ruledOut, equivalentOnly, demand, original,
-    dropIns: fits.filter(r => r.verdict === "ok").length,
-    reviews: fits.filter(r => r.verdict === "warn").length,
+    dropIns: fits.filter(r => r.change.type === "dropin").length,
+    minor: fits.filter(r => r.change.type === "minor").length,
+    major: fits.filter(r => r.change.type === "major").length,
+    originalCost: o.usd != null ? costPlan(o, o, demand.qty) : null,
     onTime: demand.needBy ? fits.filter(r => r.plan.onTime).length : null
   };
 }

@@ -1,6 +1,6 @@
 // DOM rendering and wiring. All substitution logic lives in rules.js.
 import {
-  CATALOG, BY_PN, CAP_VALUES, DIEL_TEMP, GRADES, VERDICT_LABEL,
+  CATALOG, BY_PN, CAP_VALUES, GRADES, CHECK_ROWS,
   fmtCap, fmtTol, fmtVolt, fmtStock, fmtWeek, addWeeks, parseQty, parseQuery, rank
 } from "./rules.js";
 
@@ -13,9 +13,26 @@ const EXAMPLES = [
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const $ = id => document.getElementById(id);
-const MARK = {ok:"✓", warn:"!", bad:"✕", info:"i"};
-const MARK_SR = {ok:"Pass", warn:"Review", bad:"Fail", info:"Note"};
+// Comparison colors: green same, yellow differs without impact, red needs a product engineer.
+const MARK = {same:"✓", minor:"≈", critical:"!"};
+const LEVEL_SR = {same:"Same", minor:"Minor difference", critical:"Product engineer review"};
+const LEVEL_CHIP = {same:"v-ok", minor:"v-warn", critical:"v-bad"};
 let current = null;
+
+const num = (n, d) => n.toLocaleString("en-US", {minimumFractionDigits:d, maximumFractionDigits:d});
+// Prices are in USD; with an exchange rate, MXN follows.
+function money(usd, rate, d){
+  const s = `US$${num(usd, d)}`;
+  return rate ? `${s} · MX$${num(usd * rate, d === 4 ? 3 : d)}` : s;
+}
+// Same, for the comparison table: pesos on their own line so columns stay narrow.
+function moneyCell(usd, rate, d, sign = false){
+  const lead = sign ? (usd > 0 ? "+" : usd < 0 ? "−" : "±") : "";
+  const a = Math.abs(usd);
+  return `${lead}US$${num(sign ? a : usd, d)}${rate ? `<span class="mxn">${lead}MX$${num((sign ? a : usd) * rate, d === 4 ? 3 : d)}</span>` : ""}`;
+}
+const signedMoney = (usd, rate, d) => (usd > 0 ? "+" : usd < 0 ? "−" : "±") + money(Math.abs(usd), rate, d);
+const pct = x => `${x > 0 ? "+" : x < 0 ? "−" : "±"}${Math.round(Math.abs(x) * 100)}%`;
 
 const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const isoDate = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -26,10 +43,12 @@ function getOptions(){
   const qty = parseQty($("qty").value);
   const [y, m, d] = $("need").value.split("-").map(Number);
   const needBy = y ? new Date(y, m - 1, d) : null;
-  return {mode, grade, qty, demand:{qty: Number.isNaN(qty) ? null : qty, needBy, today:today()}};
+  const rateRaw = $("rate").value.trim().replace(",", ".");
+  const rate = rateRaw === "" ? null : Number(rateRaw) > 0 ? Number(rateRaw) : NaN;
+  return {mode, grade, qty, rate, demand:{qty: Number.isNaN(qty) ? null : qty, needBy, today:today()}};
 }
 
-function renderOriginal(o, required, {demand, original}){
+function renderOriginal(o, required, {demand, original}, rate){
   const title = o.fromPart
     ? `<div><div class="pn">${esc(o.pn)}</div><div class="maker">${esc(o.mfr)} ceramic capacitor</div></div>`
     : `<div><div class="pn">Spec from your description</div><div class="maker">No part number, so matching on these specs</div></div>`;
@@ -43,6 +62,8 @@ function renderOriginal(o, required, {demand, original}){
       ${required !== o.grade ? field("Grade required now", GRADES[required].label) : ""}
       ${demand.qty ? field("Quantity needed", fmtStock(demand.qty)) : ""}
       ${demand.needBy ? field("Needed by", fmtWeek(demand.needBy, demand.today)) : ""}
+      ${o.fromPart ? field("Unit price (simulated)", money(o.usd, rate, 4)) : ""}
+      ${o.fromPart && demand.qty ? field(`Cost for ${fmtStock(demand.qty)}`, money(o.usd * demand.qty, rate, 0)) : ""}
     </dl>
     ${o.fromPart ? `<p class="shortage">Simulated: ${o.stock ? fmtStock(o.stock) + " in stock" : "no stock"} at distribution, ${o.lead}-week factory lead time.${waitText(original, demand)}</p>` : ""}`;
 }
@@ -79,6 +100,45 @@ function renderPlan(r, demand){
     </div>`;
 }
 
+// Side-by-side comparison of the original against the top candidates.
+function renderCompare(o, ranking, rate){
+  const cols = ranking.fits.slice(0, 3);
+  if (!cols.length) return "";
+  const {demand} = ranking;
+  const rows = cols.map(r => Object.fromEntries(r.checks.map(k => [k.key, k])));
+  const cell = k => `<td class="lv-${k.level}"><span class="mark" aria-hidden="true">${MARK[k.level]}</span><span class="sr-only">${LEVEL_SR[k.level]}: </span>${esc(k.value)}${
+    k.level === "same" || k.key === "life" ? "" : `<span class="cell-note">${esc(k.text)}</span>`}</td>`;
+  const plain = (label, orig, cells) => `<tr><th scope="row">${label}</th><td class="orig">${orig}</td>${cells.join("")}</tr>`;
+  const sec = label => `<tr class="sec"><th scope="colgroup" colspan="${cols.length + 2}">${label}</th></tr>`;
+
+  const datasheet = CHECK_ROWS.map(key =>
+    `<tr><th scope="row">${rows[0][key].label}</th><td class="orig">${esc(rows[0][key].orig)}</td>${rows.map(m => cell(m[key])).join("")}</tr>`).join("");
+  const planning = [
+    plain("Type of change", "—", cols.map(r =>
+      `<td><span class="verdict ${LEVEL_CHIP[r.change.level]}">${r.change.label}</span><span class="cell-note">${esc(r.change.reason)}</span></td>`)),
+    plain("Lead time", o.fromPart ? `${o.lead} wk` : "—", cols.map(r => `<td>${r.part.lead} wk</td>`)),
+    plain("Stock", o.fromPart ? fmtStock(o.stock) : "—", cols.map(r => `<td>${fmtStock(r.part.stock)}</td>`)),
+    plain("Usable in production", o.fromPart && ranking.original ? esc(fmtWeek(ranking.original.date, demand.today)) : "—", cols.map(r =>
+      `<td>${esc(fmtWeek(r.plan.usableDate, demand.today))}${r.plan.onTime == null ? "" : `<span class="cell-note">${r.plan.onTime ? "On time" : `${r.plan.lateWeeks} wk late`}</span>`}</td>`)),
+    plain("Unit price (simulated)", o.fromPart ? moneyCell(o.usd, rate, 4) : "—", cols.map(r =>
+      `<td>${moneyCell(r.cost.unit, rate, 4)}${r.cost.deltaPct == null ? "" : `<span class="cell-note">${pct(r.cost.deltaPct)} vs original</span>`}</td>`)),
+    ...(demand.qty ? [plain(`Cost for ${fmtStock(demand.qty)}`, o.fromPart ? moneyCell(o.usd * demand.qty, rate, 0) : "—", cols.map(r =>
+      `<td>${moneyCell(r.cost.total, rate, 0)}${r.cost.deltaTotal == null ? "" : `<span class="cell-note">${moneyCell(r.cost.deltaTotal, rate, 0, true).replace('<span class="mxn">', " · ").replace("</span>", "")} vs original</span>`}</td>`))] : [])
+  ].join("");
+
+  return `
+    <h3 class="cmp-h">Side by side: top ${cols.length}</h3>
+    <div class="cmp-wrap" role="region" aria-labelledby="cmp-cap" tabindex="0">
+      <table class="cmp">
+        <caption id="cmp-cap" class="sr-only">Datasheet comparison of the original against the top ${cols.length} candidates</caption>
+        <thead><tr><th scope="col">Spec</th><th scope="col">${o.fromPart ? `Original<span class="pn cell-note">${esc(o.pn)}</span>` : "Your spec"}</th>${cols.map(r =>
+          `<th scope="col"><span class="pn">${esc(r.part.pn)}</span><span class="cell-note">${esc(r.part.mfr)}</span></th>`).join("")}</tr></thead>
+        <tbody>${sec("Datasheet")}${datasheet}${sec("Change, supply and cost")}${planning}</tbody>
+      </table>
+    </div>
+    <p class="hint cmp-note">Specs come from the demo catalog and aren’t all verified against datasheets yet. Stock, lead times and prices are simulated.</p>`;
+}
+
 function emptyMessage({mode, required, ranking}){
   if (required === "medical"){
     return "No part in this demo catalog is released for medical use. A medical design needs the manufacturer’s medical-grade series, and life-support or implantable use usually needs the manufacturer’s written approval. AEC-Q200 doesn’t substitute for either.";
@@ -91,8 +151,8 @@ function emptyMessage({mode, required, ranking}){
   return "A near miss below might still work with an engineering deviation. Open the ruled-out list to see what failed.";
 }
 
-function renderCandidates(ranking, {mode, required}){
-  const {fits, ruledOut, dropIns, reviews, equivalentOnly, demand, onTime} = ranking;
+function renderCandidates(o, ranking, {mode, required, rate}){
+  const {fits, ruledOut, dropIns, minor, major, equivalentOnly, demand, onTime} = ranking;
   $("cand-h").textContent = fits.length
     ? (mode === "better" ? "Better than the original, most upgrades first" : "Candidates, best first")
     : (mode === "better" ? "No upgrade found" : "No candidate fits every rule");
@@ -100,28 +160,37 @@ function renderCandidates(ranking, {mode, required}){
   const tally = [];
   if (onTime != null)  tally.push(`<li class="v-neutral">${onTime} usable by ${fmtWeek(demand.needBy, demand.today)}</li>`);
   if (dropIns)         tally.push(`<li class="v-ok">${dropIns} drop-in</li>`);
-  if (reviews)         tally.push(`<li class="v-warn">${reviews} need review</li>`);
+  if (minor)           tally.push(`<li class="v-warn">${minor} minor change</li>`);
+  if (major)           tally.push(`<li class="v-bad">${major} major change</li>`);
   if (equivalentOnly)  tally.push(`<li class="v-neutral">${equivalentOnly} equivalent only</li>`);
-  if (ruledOut.length) tally.push(`<li class="v-bad">${ruledOut.length} ruled out</li>`);
+  if (ruledOut.length) tally.push(`<li class="v-neutral">${ruledOut.length} ruled out</li>`);
   $("tally").innerHTML = tally.join("");
 
   const earliest = fits.length ? fits.reduce((a, b) => b.plan.usableDate < a.plan.usableDate ? b : a) : null;
   const lateNote = onTime === 0 && earliest
     ? `<p class="empty lead-note">None of these can be approved and in hand by ${fmtWeek(demand.needBy, demand.today)}. The earliest is ${esc(earliest.part.pn)}, usable ${fmtWeek(earliest.plan.usableDate, demand.today)}.</p>`
     : "";
+  const legend = fits.length ? `
+    <ul class="legend" aria-label="Color key">
+      <li><span class="sw sw-same" aria-hidden="true">✓</span>Same</li>
+      <li><span class="sw sw-minor" aria-hidden="true">≈</span>Differs, no impact</li>
+      <li><span class="sw sw-critical" aria-hidden="true">!</span>Needs a product engineer</li>
+    </ul>` : "";
   $("cand-body").innerHTML = fits.length
-    ? `${lateNote}<ol class="tape" aria-label="${mode === "better" ? "Upgrades ranked by number of improvements" : demand.needBy ? "Candidates ranked by on-time, fit, then usable date" : "Candidates ranked by fit, then usable date"}">${fits.map(r => `
+    ? `${lateNote}${legend}${renderCompare(o, ranking, rate)}<h3 class="cmp-h">All candidates</h3><ol class="tape" aria-label="${mode === "better" ? "Upgrades ranked by number of improvements" : demand.needBy ? "Candidates ranked by on-time, fit, then usable date" : "Candidates ranked by fit, then usable date"}">${fits.map(r => `
         <li class="pocket">
           <div class="pocket-head">
             <h3><span class="pn">${esc(r.part.pn)}</span> <span class="maker">${esc(r.part.mfr)}</span></h3>
-            <span class="verdict v-${r.verdict}">${VERDICT_LABEL[r.verdict]}</span>
+            <span class="verdict ${LEVEL_CHIP[r.change.level]}">${r.change.label}</span>
           </div>
+          <p class="change-why">${esc(r.change.reason)}</p>
           ${r.upgrades.length ? `<p class="better">Better on: ${r.upgrades.map(esc).join(", ")}</p>` : ""}
           <ul class="checks">${r.checks.map(k => `
-            <li><span class="mark m-${k.state}" aria-hidden="true">${MARK[k.state]}</span><span><span class="sr-only">${MARK_SR[k.state]}: </span>${esc(k.text)}</span></li>`).join("")}
+            <li><span class="mark m-${k.level}" aria-hidden="true">${MARK[k.level]}</span><span><span class="sr-only">${LEVEL_SR[k.level]}: </span>${esc(k.text)}</span></li>`).join("")}
           </ul>
           ${renderPlan(r, demand)}
-          <p class="avail"><span>Stock <b>${fmtStock(r.part.stock)}</b></span><span>Lead time <b>${r.part.lead} wk</b></span><span>Operating temp <b>${DIEL_TEMP[r.part.diel]}</b></span></p>
+          <p class="avail"><span>Stock <b>${fmtStock(r.part.stock)}</b></span><span>Lead time <b>${r.part.lead} wk</b></span><span>Unit price <b>${money(r.cost.unit, rate, 4)}</b>${r.cost.deltaPct == null ? "" : ` (${pct(r.cost.deltaPct)})`}</span>${
+            demand.qty ? `<span>Cost for ${fmtStock(demand.qty)} <b>${money(r.cost.total, rate, 0)}</b>${r.cost.deltaTotal == null ? "" : ` (${signedMoney(r.cost.deltaTotal, rate, 0)})`}</span>` : ""}</p>
         </li>`).join("")}</ol>`
     : `<p class="empty">${esc(emptyMessage({mode, required, ranking}))}</p>`;
 
@@ -155,17 +224,24 @@ function search(query, {focusResults = true} = {}){
   if (error){ showError(error); return; }
   clearError();
 
-  const {mode, grade, qty, demand} = getOptions();
-  const qtyBad = Number.isNaN(qty);
-  $("qty-err").hidden = !qtyBad;
-  $("qty-err").textContent = qtyBad ? "Enter the quantity as a number, like 250000 or 250k. Results below ignore it." : "";
-  if (qtyBad) $("qty").setAttribute("aria-invalid", "true"); else $("qty").removeAttribute("aria-invalid");
+  const {mode, grade, qty, rate: rateIn, demand} = getOptions();
+  const qtyBad = Number.isNaN(qty), rateBad = Number.isNaN(rateIn);
+  const rate = rateBad ? null : rateIn;
+  const problems = [
+    qtyBad && "Enter the quantity as a number, like 250000 or 250k.",
+    rateBad && "Enter the exchange rate as a number, like 18.50."
+  ].filter(Boolean);
+  $("qty-err").hidden = !problems.length;
+  $("qty-err").textContent = problems.length ? `${problems.join(" ")} Results below ignore it.` : "";
+  for (const [id, bad] of [["qty", qtyBad], ["rate", rateBad]]){
+    if (bad) $(id).setAttribute("aria-invalid", "true"); else $(id).removeAttribute("aria-invalid");
+  }
 
   const required = grade === "same" ? spec.grade : grade;
   const ranking = rank(spec, {mode, required, demand});
   current = {query, spec};
-  renderOriginal(spec, required, ranking);
-  const summary = renderCandidates(ranking, {mode, required});
+  renderOriginal(spec, required, ranking, rate);
+  const summary = renderCandidates(spec, ranking, {mode, required, rate});
   $("results").hidden = false;
   setHash(spec);
   $("status").textContent = summary;
@@ -179,6 +255,7 @@ function search(query, {focusResults = true} = {}){
 
 /* ---------- Wiring ---------- */
 function setOptions({mode, grade, qty = "", weeks = null}){
+  // The exchange rate is the viewer's own; examples leave it as it is.
   document.querySelector(`input[name="mode"][value="${mode}"]`).checked = true;
   $("grade").value = grade;
   $("qty").value = qty;
