@@ -7,6 +7,16 @@ workers_dev = true
 # Comma-separated. Add http://localhost:8000 while testing locally.
 ALLOWED_ORIGIN = "https://andreevazquez.github.io"
 
+# Best-effort per-IP protection for the public provider-backed endpoint.
+# Cloudflare requires this namespace ID to be a unique integer in your account.
+[[ratelimits]]
+name = "MLCC_LIMITER"
+namespace_id = "73519042"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
+
 # Secrets (never in this file). Set them in the Cloudflare dashboard
 # (Workers & Pages → mlcc-alternate-finder-api → Settings → Variables and Secrets) or with:
 #   npx wrangler secret put NEXAR_CLIENT_ID

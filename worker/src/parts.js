@@ -109,11 +109,12 @@ export function fromMouser(parts){
     };
     if (byMpn.has(key)){ byMpn.get(key).offers.push(offer); continue; }
     const d = p.description || "";
+    const recommendedAlt = d.match(/\bRECOMMENDED\s+ALT(?:ERNATE)?\s+([A-Z0-9][A-Z0-9-]{2,})/i)?.[1] || null;
     byMpn.set(key, {
       source: "Mouser", pn: p.mpn, mfr: p.manufacturer, description: d,
       cap: parseCapacitance(d), v: parseVoltage(d), pkg: parseCase(d), diel: parseDielectric(d),
       tol: parseTolerance(d), grade: parseGrade(d), life: parseLifecycle(p.lifecycle),
-      offers: [offer], datasheet: p.datasheet, url: p.url
+      offers: [offer], datasheet: p.datasheet, url: p.url, recommendedAlt
     });
   }
   return [...byMpn.values()].map(p => {

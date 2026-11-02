@@ -1,11 +1,11 @@
 import {test, describe, beforeEach} from "node:test";
 import assert from "node:assert/strict";
-import {normalizeNexarResults, nexarToken, resetNexarToken, isQuotaError, dedupeOffers} from "../worker/src/nexar.js";
+import {normalizeNexarResults, nexarToken, resetNexarToken, isQuotaError, isPlanLimitError, isRateLimitError, dedupeOffers} from "../worker/src/nexar.js";
 import {
   parseCapacitance, parseVoltage, parseCase, parseDielectric, parseTolerance, parseLifecycle,
   parseGrade, fromNexar, fromMouser, alternatesQuery, median
 } from "../worker/src/parts.js";
-import {lookUp} from "../worker/src/index.js";
+import worker, {lookUp} from "../worker/src/index.js";
 import {rank, bestOffer, priceLive, isCheckable} from "../rules.js";
 
 // Hand-written responses in the documented shapes, to test the parsing only.
@@ -64,8 +64,12 @@ describe("Nexar adapter", () => {
     assert.equal(median([]), null);
   });
   test("recognises quota answers", () => {
-    assert.ok(isQuotaError(429));
+    assert.ok(isRateLimitError(429));
+    assert.ok(!isQuotaError(429));
     assert.ok(isQuotaError(200, "Monthly part limit exceeded"));
+    assert.ok(!isQuotaError(200, "You have exceeded your part limit of 10. Please upgrade your plan."));
+    assert.ok(isPlanLimitError(200, "You have exceeded your part limit of 10. Please upgrade your plan."));
+    assert.ok(isRateLimitError(200, "Too many requests"));
     assert.ok(!isQuotaError(200, "Syntax error"));
   });
 });
@@ -111,6 +115,10 @@ describe("spec parsing", () => {
                                      {...base, distributorPn: "2", stock: 5000, packaging: "Cut Tape"}]);
     assert.equal(rest.length, 0);
     assert.deepEqual([p.cap, p.v, p.pkg, p.diel, p.tol, p.grade, p.stock, p.offers.length], [100000, 50, "0603", "X7R", 10, "automotive", 5000, 2]);
+  });
+  test("retains a Mouser-recommended alternate from a localized listing description", () => {
+    const [p] = fromMouser([{mpn:"ORIGINAL", description:"Capacitores cerámicos RECOMMENDED ALT 81-GRM188R72A104KA35", priceBreaks:[]}]);
+    assert.equal(p.recommendedAlt, "81-GRM188R72A104KA35");
   });
   test("alternates query", () => {
     assert.equal(alternatesQuery({cap: 100000, pkg: "0603", diel: "X7R"}), "100nF 0603 X7R ceramic capacitor");
@@ -170,6 +178,23 @@ describe("Worker source order", () => {
     assert.equal(r.source, null);
     assert.deepEqual(Object.keys(r.errors), ["Nexar", "Mouser"]);
   });
+
+  test("keeps a Nexar plan result limit separate from monthly quota exhaustion", async () => {
+    resetNexarToken();
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async url => url.includes("identity")
+      ? {ok:true, json:async () => ({access_token:"t", expires_in:3600})}
+      : {ok:true, json:async () => ({errors:[{message:"You have exceeded your part limit of 10. Please upgrade your plan."}]})};
+    try {
+      const r = await lookUp("TEST-PLAN", {NEXAR_CLIENT_ID:"id", NEXAR_CLIENT_SECRET:"s"}, {waitUntil(){}});
+      assert.equal(r.errors.planLimit, true);
+      assert.equal(r.errors.quota, undefined);
+      assert.match(r.errors.Nexar, /plan limits/);
+    } finally {
+      globalThis.fetch = realFetch;
+      resetNexarToken();
+    }
+  });
 });
 
 describe("live parts in the rules", () => {
@@ -204,5 +229,30 @@ describe("live parts in the rules", () => {
     assert.equal(alt1.plan.usableDate, null, "no stock or lead time: usable date unknown, not guessed");
     assert.equal(alt1.cost.unit, null);
     assert.equal(r.fits.find(f => f.part.pn === "ALT-2").verdict, "warn", "missing tolerance needs review");
+  });
+});
+
+describe("Worker request limits", () => {
+  test("rejects a request when the caller is over the configured rate limit", async () => {
+    let key;
+    const request = new Request("https://worker.test/part?mpn=GRM188R71H104KA93D", {
+      headers: {Origin: "https://andreevazquez.github.io", "CF-Connecting-IP": "203.0.113.7"}
+    });
+    const response = await worker.fetch(request, {
+      ALLOWED_ORIGIN: "https://andreevazquez.github.io",
+      MLCC_LIMITER: {limit: async ({key: k}) => { key = k; return {success: false}; }}
+    }, {});
+    assert.equal(response.status, 429);
+    assert.equal(key, "203.0.113.7");
+    assert.equal(response.headers.get("Retry-After"), "60");
+  });
+
+  test("fails closed if rate limiting is not configured", async () => {
+    const request = new Request("https://worker.test/part?mpn=GRM188R71H104KA93D", {
+      headers: {"CF-Connecting-IP": "203.0.113.8"}
+    });
+    const response = await worker.fetch(request, {}, {});
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /protection is unavailable/);
   });
 });

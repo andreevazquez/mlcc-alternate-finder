@@ -46,6 +46,8 @@ const record = (errors, name, e) => {
   errors[name] = message(e);
   if (e?.detail) errors[`${name}Detail`] = e.detail;
   if (e?.quota) errors.quota = true;
+  if (e?.planLimit) errors.planLimit = true;
+  if (e?.rateLimit) errors.rateLimit = true;
 };
 
 /* ---------- Nexar ---------- */
@@ -119,13 +121,19 @@ export async function lookUp(mpn, env, ctx){
 export default {
   async fetch(request, env, ctx){
     const headers = {"Content-Type": "application/json; charset=utf-8", ...cors(request, env)};
-    const json = (body, status = 200) => new Response(JSON.stringify(body), {status, headers});
+    const json = (body, status = 200, extraHeaders = {}) => new Response(JSON.stringify(body), {status, headers: {...headers, ...extraHeaders}});
     if (request.method === "OPTIONS") return new Response(null, {headers: cors(request, env)});
     const url = new URL(request.url);
     if (request.method !== "GET" || url.pathname !== "/part") return json({error: "Not found"}, 404);
 
     const mpn = (url.searchParams.get("mpn") || "").trim();
     if (!MPN_RE.test(mpn)) return json({error: "Give a manufacturer part number, like ?mpn=GRM188R71H104KA93D"}, 400);
+
+    // Fail closed if rate limiting is missing: this public endpoint consumes provider quota.
+    const clientIp = request.headers.get("CF-Connecting-IP");
+    if (!env.MLCC_LIMITER || !clientIp) return json({error: "Request protection is unavailable"}, 503);
+    const {success} = await env.MLCC_LIMITER.limit({key: clientIp});
+    if (!success) return json({error: "Too many requests. Try again in a minute."}, 429, {"Retry-After": "60"});
 
     const result = await lookUp(mpn, env, ctx);
     return json({mpn, ...result});

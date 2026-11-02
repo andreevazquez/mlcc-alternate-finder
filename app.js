@@ -10,9 +10,9 @@ const API_URL = "https://mlcc-alternate-finder-api.ricardovazqueztovar.workers.d
 const MPN_RE = /^[A-Za-z0-9][A-Za-z0-9\-./#+]{2,59}$/;
 
 const EXAMPLES = [
-  {label:"0.1 µF out of stock, 250k needed in 4 weeks", query:"GRM188R71H104KA93D", mode:"equivalent", grade:"same", qty:"250k", weeks:4},
+  {label:"Compare 0.1 µF options, 250k needed in 4 weeks", query:"0.1uF 50V X7R 0603", mode:"equivalent", grade:"same", qty:"250k", weeks:4},
   {label:"10 µF from a BOM line, better than",  query:"CAP CER 10UF 10V X5R 0805",   mode:"better",     grade:"same"},
-  {label:"Moving to automotive, 50k in 12 weeks", query:"GRM188R71H104KA93D",        mode:"equivalent", grade:"automotive", qty:"50k", weeks:12},
+  {label:"Automotive grade, 50k in 12 weeks", query:"0.1uF 50V X7R 0603 AEC-Q200", mode:"equivalent", grade:"automotive", qty:"50k", weeks:12},
   {label:"100 pF for a medical device",         query:"100pF 50V C0G 0603",          mode:"equivalent", grade:"medical"}
 ];
 
@@ -104,6 +104,9 @@ function renderOriginal(o, required, {demand, original}, rate, live){
     ? `<div><div class="pn">${esc(o.pn)}</div><div class="maker">${esc(live ? [o.mfr, o.description].filter(Boolean).join(" · ") : `${o.mfr} ceramic capacitor`)}</div></div>`
     : `<div><div class="pn">Spec from your description</div><div class="maker">No part number, so matching on these specs</div></div>`;
   const field = (k, v) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`;
+  const suggestion = live && o.recommendedAlt
+    ? `<p class="recommendation"><b>Mouser listing suggests</b> <span class="pn">${esc(o.recommendedAlt)}</span> — not checked for compatibility. <a href="${esc(liveSources(o.recommendedAlt).find(s => s.name === "Mouser").url)}" target="_blank" rel="noopener noreferrer">Check Mouser’s listing<span class="sr-only"> (opens in a new tab)</span></a></p>`
+    : "";
   $("orig").innerHTML = `
     <div class="label-top">${title}<div class="barcode" aria-hidden="true"></div></div>
     <dl class="fields">
@@ -120,6 +123,7 @@ function renderOriginal(o, required, {demand, original}, rate, live){
     ${!o.fromPart ? "" : live ? `
       <p class="shortage">${o.stock == null ? "No distributor lists stock" : o.stock ? `${fmtStock(o.stock)} in stock at authorised distributors` : "No stock at authorised distributors"}, ${
         o.lead == null ? "no factory lead time listed" : `typical factory lead time ${o.lead} wk (median of distributor quotes)`}.${waitText(original, demand)}</p>
+      ${suggestion}
       ${renderOffers(o, rate)}
       ${o.datasheet ? `<p class="live"><a href="${esc(o.datasheet)}" target="_blank" rel="noopener noreferrer nofollow">Datasheet<span class="sr-only"> (opens in a new tab)</span></a></p>` : ""}
       ${liveLinks(o.pn)}`
@@ -196,7 +200,7 @@ function renderCompare(o, ranking, rate, live){
       </table>
     </div>
     <p class="hint cmp-note">${live
-      ? `Specs, stock, lead times and prices from ${esc(SOURCE_NAME[live.source] || live.source)}, ${esc(fmtAgo(live.fetchedAt))}. Prices are for the order quantity at the distributor that covers it for the least. Confirm against the datasheet before approving.`
+      ? `Retrieved from ${esc(SOURCE_NAME[live.source] || live.source)} ${esc(fmtAgo(live.fetchedAt))}; this is when the service fetched the response, not necessarily when each supplier updated its listing. Stock and lead times can change. Prices are for the order quantity at the distributor that covers it for the least. Confirm against the current datasheet and supplier listing before approving.`
       : "Specs come from the demo catalog and aren’t all verified against datasheets yet. Stock, lead times and prices are simulated."}</p>`;
 }
 
@@ -218,7 +222,10 @@ function renderCandidates(o, ranking, {mode, required, rate, live}){
   const {fits, ruledOut, dropIns, minor, major, equivalentOnly, unchecked, demand, onTime} = ranking;
   $("cand-h").textContent = fits.length
     ? (mode === "better" ? "Better than the original, most upgrades first" : "Candidates, best first")
-    : (mode === "better" ? "No upgrade found" : "No candidate fits every rule");
+    : live && o.cap == null ? "Alternates can’t be checked yet"
+    : live?.alternatesError ? "Live alternate search unavailable"
+    : required === "medical" ? (live ? "No live medical-grade candidate found" : "No medical-grade parts in demo catalog")
+    : mode === "better" ? "No upgrade found" : "No candidate fits every rule";
 
   const tally = [];
   if (onTime != null)  tally.push(`<li class="v-neutral">${onTime} usable by ${fmtWeek(demand.needBy, demand.today)}</li>`);
@@ -320,7 +327,9 @@ function liveProblem(mpn, {data, error}){
   if (error) return `Live data isn’t available right now (${error}).`;
   const errs = data.errors || {};
   const reasons = [errs.Nexar, errs.Mouser].filter(Boolean);
+  if (errs.planLimit && !data.part) return `Nexar’s plan limits this lookup; check the account’s result limit or use the Mouser fallback. ${reasons.filter(e => !/plan limits/i.test(e)).join("; ")}`.trim();
   if (errs.quota && !data.part) return "Live data isn’t available: this month’s Octopart (Nexar) quota is used up and Mouser didn’t answer either.";
+  if (errs.rateLimit && !data.part) return `Nexar temporarily rate-limited this lookup; retry shortly. ${reasons.filter(e => !/rate-limited/i.test(e)).join("; ")}`.trim();
   if (reasons.length && reasons.every(e => /doesn’t list/.test(e)))
     return `No authorised distributor lists ${mpn}. Check the part number.`;
   return `Live data isn’t available right now (${reasons.join("; ") || "no source answered"}).`;
@@ -375,8 +384,17 @@ function render({query, parsed, live, problem}, {focusResults}){
   const spec = live ? {...priceLive(live.part, demand.qty), fromPart:true} : parsed.spec;
   const candidates = live ? live.candidates.map(c => priceLive(c, demand.qty)) : CATALOG;
   const source = live ? SOURCE_NAME[live.source] || live.source : null;
+  const providerNote = live?.errors?.planLimit
+    ? live.alternatesSource === "Mouser" || live.source === "Mouser"
+      ? ". Nexar’s plan limit restricted results; Mouser supplied the fallback."
+      : ". Nexar’s plan limit restricted results."
+    : live?.errors?.quota
+      ? ". Octopart’s monthly quota is used up; fallback data may be incomplete."
+      : live?.errors?.rateLimit
+        ? ". Nexar temporarily rate-limited requests; retry shortly."
+      : "";
   setNote(live
-    ? `<span class="src-live">Live</span> ${esc(source)} · ${esc(fmtAgo(live.fetchedAt))}${live.source === "Mouser" && live.errors?.quota ? ". Octopart’s monthly quota is used up, so this comes from Mouser." : ""}${
+    ? `<span class="src-live">Live</span> ${esc(source)} · ${esc(fmtAgo(live.fetchedAt))}${providerNote}${
         live.alternatesSource && live.alternatesSource !== live.source ? `. Alternates from ${esc(SOURCE_NAME[live.alternatesSource] || live.alternatesSource)}.` : ""}`
     : problem
       ? `<span class="src-demo">Demo</span> ${esc(problem)} Showing the demo catalog instead: stock, lead times and prices are simulated.`

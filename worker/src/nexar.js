@@ -3,7 +3,7 @@
 //
 // FIELD NAMES ARE UNVERIFIED against a live response. They follow Nexar's published
 // Supply schema (supSearchMpn, supSearch, Part, Seller, Offer, PricePoint); check them in
-// the playground at https://portal.nexar.com before trusting the output (see NEXT_STEPS.md).
+// the Nexar playground and against current responses before trusting the output.
 
 export const NEXAR_TOKEN_URL = "https://identity.nexar.com/connect/token";
 export const NEXAR_GRAPHQL_URL = "https://api.nexar.com/graphql";
@@ -56,12 +56,16 @@ export const resetNexarToken = () => { cachedToken = null; };
 
 // detail keeps Nexar's own words, so a quota or plan limit can be told apart from a bad query.
 export class NexarError extends Error {
-  constructor(message, {quota = false, detail = null} = {}){ super(message); this.quota = quota; this.detail = detail; }
+  constructor(message, {quota = false, planLimit = false, rateLimit = false, detail = null} = {}){ super(message); this.quota = quota; this.planLimit = planLimit; this.rateLimit = rateLimit; this.detail = detail; }
 }
 
-// Quota or rate-limit answers, as HTTP status or GraphQL error text.
+// Separate exhausted monthly quota from account/plan result limits.
 export const isQuotaError = (status, message = "") =>
-  status === 429 || /quota|limit (?:has been )?(?:reached|exceeded)|exceeded|too many/i.test(message);
+  /monthly.{0,30}(?:quota|part limit)|(?:quota|part limit).{0,30}(?:reached|exceeded|used up)/i.test(message);
+export const isPlanLimitError = (_status, message = "") =>
+  /(?:part limit of\s*\d+|plan limit|upgrade your plan)/i.test(message);
+export const isRateLimitError = (status, message = "") =>
+  status === 429 || /rate limit|too many requests/i.test(message);
 
 export async function nexarQuery(env, query, variables, fetchFn = fetch){
   const token = await nexarToken(env, fetchFn);
@@ -74,8 +78,13 @@ export async function nexarQuery(env, query, variables, fetchFn = fetch){
   const message = (body.errors || []).map(e => e.message).join("; ");
   if (!res.ok || message){
     const quota = isQuotaError(res.status, message);
-    throw new NexarError(quota ? "Nexar’s monthly part quota is used up" : `Nexar answered ${message || res.status}`,
-      {quota, detail: message || `HTTP ${res.status}`});
+    const planLimit = isPlanLimitError(res.status, message);
+    const rateLimit = isRateLimitError(res.status, message);
+    const summary = quota ? "Nexar’s monthly part quota is used up"
+      : planLimit ? "Nexar’s plan limits the number of parts returned"
+      : rateLimit ? "Nexar temporarily rate-limited this request"
+      : `Nexar answered ${message || res.status}`;
+    throw new NexarError(summary, {quota, planLimit, rateLimit, detail: message || `HTTP ${res.status}`});
   }
   return body.data;
 }

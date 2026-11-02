@@ -1,9 +1,8 @@
 // Mouser Search API adapter: request building and response normalisation.
 // Pure functions, so they run under `node --test` as well as in the Worker.
 //
-// FIELD NAMES ARE UNVERIFIED. They follow Mouser's Search API v1 as documented
-// publicly, but no real response has been checked yet. The first step with
-// network access is to call the API for a known part and compare (see NEXT_STEPS.md).
+// Field names follow Mouser Search API v1; continue validating them against
+// real responses, especially localized descriptions and optional attributes.
 
 export const MOUSER_ENDPOINT = "https://api.mouser.com/api/v1/search/partnumber";
 export const MOUSER_KEYWORD_ENDPOINT = "https://api.mouser.com/api/v1/search/keyword";

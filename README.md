@@ -4,6 +4,8 @@ Your capacitor is on allocation. Find a drop-in alternate.
 
 A single-page tool that finds alternates for a multilayer ceramic capacitor (MLCC) that is out of stock or on long lead time. Enter a part number or a raw BOM line such as `CAP CER 10UF 10V X5R 0805`, and the page checks every part in its catalog against the substitution rules a planner and a component engineer apply before approving a substitute. Each candidate is marked **Drop-in**, **Fits, needs review**, or **Not compatible**, with the reason for every check.
 
+**This is a screening aid, not an engineering approval.** Verify each candidate against its current manufacturer datasheet, lifecycle status, qualification, mechanical/electrical requirements, and supplier availability before approving a production substitution. Live-data timestamps indicate when this service fetched a response; they do not necessarily indicate when each distributor updated its listing.
+
 - **Live demo:** <https://andreevazquez.github.io/mlcc-alternate-finder/>
 - **Deep link example:** <https://andreevazquez.github.io/mlcc-alternate-finder/#GRM188R71H104KA93D> opens with that part loaded.
 
@@ -83,12 +85,13 @@ Durations are assumptions that vary by company and customer; they live in `APPRO
 - **Lifecycle status (active, NRND, EOL) isn’t verified for any part yet.** It’s a column in DATA_CHECK.md; once filled in, add it to the part in `rules.js` as `life:"Active"`, `"NRND"` or `"EOL"`.
 - **There are no medical-grade parts, on purpose.** Inventing part numbers would be worse than leaving them out. A medical search explains what’s required instead: the manufacturer’s medical-grade series and, for life-support or implantable use, the manufacturer’s written approval.
 
-## Live data (in progress)
+## Live data
 
-A Cloudflare Worker in `worker/` will give any manufacturer part number real specs, stock, MOQ, lead time and prices from authorised distributors. The page stays static and calls the Worker; the API keys stay in the Worker.
+A Cloudflare Worker in `worker/` serves live manufacturer-part-number lookups through authorised distributor APIs. The page stays static and calls the Worker; API keys remain in Worker secrets.
 
-- **Sources:** Octopart’s API (Nexar) first, for offers from many distributors at once; Mouser’s Search API when Nexar fails or its monthly quota is used up. Official APIs only, no scraping.
-- **What the page shows:** a table of distributor offers (stock, MOQ and order multiple, lead time, packaging, price), the source and how old the data is (“Octopart (Nexar) · 2 h ago”), and alternates found by capacitance and case, checked with the same rules as the demo.
+- **Sources:** Nexar first; Mouser Search API is the fallback. The Worker distinguishes monthly quota exhaustion, Nexar plan-result limits and temporary rate limiting rather than showing them all as the same error. Official APIs only, no scraping.
+- **Public endpoint:** `worker/wrangler.toml` defines a best-effort per-IP limit of 30 requests per 60 seconds (effective after this config is deployed). Cloudflare enforces these limits approximately per location, not as a strict global provider-quota cap; mobile networks/NAT can also share IPs. Use a Durable Object-backed limiter for strict provider-quota enforcement, monitor provider usage, and confirm `namespace_id` is unique in your Cloudflare account before deployment.
+- **What the page shows:** a table of distributor offers (stock, MOQ and order multiple, lead time, packaging, price), the source and when this service retrieved the response. That timestamp is not necessarily the distributor’s last-update time. Alternates are checked against the same rules as the demo.
 - **Price:** for the quantity you need, rounded up to the MOQ and order multiple, at the distributor whose stock covers it for the least total spend.
 - **Missing data stays missing.** No stock, lead time or price is guessed: the page says “Not listed”, and a part without voltage, case or a supported dielectric isn’t ranked. If the Worker can’t answer, the page says why and uses the demo catalog.
 - **Descriptions** (`0.1uF 50V X7R 0603`) still search the demo catalog.
@@ -138,6 +141,7 @@ npm test
 | `tests/live.test.js`, `tests/mouser.test.js` | Tests for the Worker, against hand-written fixtures |
 | `scripts/make-og-image.mjs` | Regenerates `og-image.png` and `apple-touch-icon.png` (needs Playwright: `npm i --no-save playwright && npx playwright install chromium`, then `npm run og-image`) |
 | `DATA_CHECK.md` | Datasheet verification checklist for the catalog |
+| `ROADMAP.md` | Current scope, limitations and prioritized next improvements |
 
 ## Author
 

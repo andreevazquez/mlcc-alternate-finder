@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Check ceramic capacitor alternates against the substitution rules planners and component engineers use.">
+<meta name="author" content="Ricardo Vázquez">
+<meta name="description" content="A supply-chain prototype by Ricardo Vázquez: screen MLCC alternates against engineering rules, supply timing and cost.">
 <title>Alternate finder for capacitors on allocation</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -33,8 +34,15 @@
 <body>
 <main>
   <header>
+    <p class="eyebrow">Ricardo Vázquez · Supply chain consultant</p>
     <h1>Your capacitor is on allocation. Find a drop-in alternate.</h1>
-    <p class="lede">Enter the part number or the description from your BOM. Choose equivalent parts or upgrades, and the grade your product needs. Every candidate is checked against the rules a planner and a component engineer use before approving a substitute, with the reason it passes or fails.</p>
+    <p class="lede">I built this from hands-on component planning and purchasing in automotive electronics. Enter a BOM line or part number to screen MLCC alternatives, see what needs engineering review, and compare supply timing and cost.</p>
+    <p class="maker-line">A practical supply-chain tool, built from a real manufacturing problem. <a href="https://linkedin.com/in/ricardovazquez88" target="_blank" rel="noopener noreferrer">Connect with me on LinkedIn<span class="sr-only"> (opens in a new tab)</span></a> <span aria-hidden="true">·</span> <a href="https://github.com/andreevazquez/mlcc-alternate-finder" target="_blank" rel="noopener noreferrer">Explore the source on GitHub<span class="sr-only"> (opens in a new tab)</span></a></p>
+    <section class="case-study" aria-label="Project case study">
+      <div><h2>Problem</h2><p>In electronics manufacturing, shortages turn alternate searches into manual spec, supply and approval checks.</p></div>
+      <div><h2>Approach</h2><p>Encode substitution rules, show why a part needs review, and combine supplier data with planning estimates.</p></div>
+      <div><h2>Outcome</h2><p>Compare candidate fit, review risk, supply timing and indicative cost in one workflow.</p></div>
+    </section>
   </header>
 
   <section aria-label="Search">
@@ -42,7 +50,7 @@
       <label for="q" class="field-label">Part number or BOM description</label>
       <div class="search">
         <input id="q" name="q" type="search" list="parts" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
-          aria-describedby="q-hint q-err" placeholder="GRM188R71H104KA93D or 0.1uF 50V X7R 0603">
+          aria-describedby="q-hint privacy-hint q-err" placeholder="GRM188R71H104KA93D or 0.1uF 50V X7R 0603">
         <datalist id="parts"></datalist>
         <button class="primary" type="submit">Find alternates</button>
       </div>
@@ -85,13 +93,15 @@
         <p class="error" id="qty-err" role="alert" hidden></p>
       </fieldset>
       <p class="hint" id="q-hint"></p>
+      <p class="hint" id="privacy-hint">Part-number lookups are sent to Nexar or Mouser. Cloudflare processes requests to the Worker; provider and Cloudflare privacy policies apply.</p>
       <p class="error" id="q-err" role="alert" hidden></p>
     </form>
-    <p class="examples-label" id="ex-label">Or start from a common case:</p>
+    <p class="examples-label" id="ex-label">Try a scenario with demo data:</p>
     <ul class="examples" id="examples" aria-labelledby="ex-label"></ul>
   </section>
 
   <div id="results" hidden>
+    <p class="safety-note" role="note"><strong>Screening aid only — not an engineering approval.</strong> Verify every candidate’s current datasheet, lifecycle, electrical and mechanical fit, qualification, and supplier availability. Do not use this result alone to approve a production substitution.</p>
     <p class="source-note" id="source-note" hidden></p>
     <section aria-labelledby="orig-h">
       <h2 id="orig-h">Part you need to replace</h2>
@@ -112,11 +122,15 @@
   <p class="sr-only" id="status" aria-live="polite"></p>
 
   <footer>
-    <p><b>How it decides.</b> Capacitance and case size must match. Voltage rating can only go up. Dielectric can only go up (Y5V, X5R, X7R, C0G). Tolerance can only get tighter. The alternate must carry the grade the design requires, and grades aren’t a ladder: an AEC-Q200 automotive part can replace a commercial one, but neither qualifies for medical use without the manufacturer’s medical-grade series. A part that passes but changes something, like a higher voltage rating that can mean a taller part, is marked for review. A new manufacturer doesn’t change fit, but it does need an entry on the approved manufacturer list (AML), so it’s noted. A part marked end of life is ruled out, and one not recommended for new designs needs review. “Better than” shows only parts that improve at least one spec or the grade while giving nothing up.</p>
-    <p><b>How it compares.</b> Every spec of each candidate is set against the original. Green means the same. Yellow means it differs without affecting the design: a tighter tolerance, a higher grade, a wider temperature range, a new manufacturer, or a lifecycle status that still needs checking. Red means a product engineer has to look at it: a higher voltage rating, a different dielectric, a spec your description left out, or a part not recommended for new designs. The type of change follows from that: a drop-in only needs an AML entry, a minor change adds samples for a new manufacturer, and a major change needs a product engineer or, in automotive, PPAP and customer approval.</p>
-    <p><b>How it plans.</b> A part can only go into production once it’s both approved and in hand. Supply is immediate if distribution stock covers the quantity, otherwise it’s the factory lead time. Approval adds up the steps the change needs, using typical durations: 1 week to add the part number to the AML and ERP item master, 2 weeks of engineering review for flagged items, 3 weeks of samples and build validation for a new manufacturer, and 6 weeks of PPAP and customer approval for an automotive design. It assumes you order while approval runs, so the part is usable at whichever comes later. With a need date, parts that make it rank first, then the smallest type of change, then the soonest usable.</p>
-    <p><b>About the data.</b> A manufacturer part number is looked up live through Octopart’s API (Nexar), with Mouser’s API as a fallback: specs, lifecycle, stock, MOQ, lead times and prices from authorised distributors, each shown with its source and how old it is. Alternates are found by capacitance and case size and checked with the same rules. Anything a distributor doesn’t list stays blank; nothing is filled in. A description, or any search while live data isn’t available, uses a demo catalog of 0.1 µF, 1 µF, 10 µF and 100 pF capacitors from six manufacturers, whose stock, lead times and prices are simulated; the page says which one you’re looking at. The demo catalog has no medical-grade parts, so a medical search there shows what’s required instead. Approval durations are typical assumptions that vary by company and customer. Always confirm against the datasheet before approving a substitute.</p>
-    <p>Built by Ricardo Vázquez, supply chain consultant who has implemented Kinaxis Maestro planning for pharma, food and aerospace companies. Before that, I led electronic-component planning and purchasing in automotive electronics manufacturing, where finding alternates by hand was a weekly fire drill. This is the checklist I wish my team had had.</p>
+    <details class="methodology">
+      <summary>How it works, data sources and assumptions</summary>
+      <div class="methodology-copy">
+        <p><b>Substitution rules.</b> Capacitance and case size must match. Voltage rating can only go up. Dielectric can only go up (Y5V, X5R, X7R, C0G). Tolerance can only get tighter. Grades aren’t a ladder: AEC-Q200 can replace commercial, but not medical. Changed or missing specifications need engineering review; end-of-life parts are ruled out.</p>
+        <p><b>Comparison and planning.</b> Each candidate is compared against the original. The approval path and production date are estimates based on typical review, validation, AML and PPAP durations. Actual requirements vary by company and customer.</p>
+        <p><b>Data.</b> MPN lookup uses Nexar with Mouser as fallback. Missing provider fields remain unknown. Description searches use a 30-part demo catalog with simulated stock, lead times and prices. Confirm specifications against the current manufacturer datasheet before approving any substitution.</p>
+      </div>
+    </details>
+    <p class="author-bio">Built by Ricardo Vázquez: supply-chain consultant with Kinaxis Maestro implementations in pharma, food and aerospace, and prior component planning and purchasing experience in automotive electronics. <a href="https://linkedin.com/in/ricardovazquez88" target="_blank" rel="noopener noreferrer">Connect on LinkedIn<span class="sr-only"> (opens in a new tab)</span></a> · <a href="https://github.com/andreevazquez/mlcc-alternate-finder" target="_blank" rel="noopener noreferrer">Project source on GitHub<span class="sr-only"> (opens in a new tab)</span></a>.</p>
   </footer>
 </main>
 </body>
