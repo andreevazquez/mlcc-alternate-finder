@@ -93,7 +93,7 @@ A Cloudflare Worker in `worker/` will give any manufacturer part number real spe
 - **Missing data stays missing.** No stock, lead time or price is guessed: the page says “Not listed”, and a part without voltage, case or a supported dielectric isn’t ranked. If the Worker can’t answer, the page says why and uses the demo catalog.
 - **Descriptions** (`0.1uF 50V X7R 0603`) still search the demo catalog.
 
-Until `API_URL` in `app.js` is set to the Worker’s address, the page uses only the demo catalog.
+The Worker runs at <https://mlcc-alternate-finder-api.ricardovazqueztovar.workers.dev> (`API_URL` in `app.js`). With `API_URL` empty, the page uses only the demo catalog. Cloudflare Workers Builds deploys `worker/` on every push to `main`.
 
 ### Deploy the Worker
 

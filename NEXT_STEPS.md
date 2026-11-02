@@ -34,7 +34,7 @@ Turn the demo into a portfolio piece Ricardo can send to contacts in electronics
   - `worker/src/index.js`: Nexar first, Mouser fallback (also on quota), part and alternates cached 6 h with the real fetch time, `ALLOWED_ORIGIN` takes a comma-separated list.
   - `rules.js`: `rank()` takes live candidates, counts the ones it can’t check, keeps unknown stock/lead/price unknown; `bestOffer()`/`priceLive()` price the order quantity.
   - `app.js`: any MPN goes to the Worker when `API_URL` is set; source and age shown; offers table; demo fallback with the reason. Checked in a browser with a stubbed Worker at 390 px and 1280 px.
-- **Blocked:** in that session both providers rejected the keys in the environment: Nexar’s token endpoint answered `invalid_client` and Mouser answered `Invalid unique identifier` for the API key. No Cloudflare token was in the environment, so the Worker isn’t deployed and `API_URL` is still empty.
+- **Blocked:** in that session both providers rejected the keys in the environment: Nexar’s token endpoint answered `invalid_client` and Mouser answered `Invalid unique identifier` for the API key. Ricardo then connected Cloudflare Workers Builds (path `/worker`); the Worker is live at `https://mlcc-alternate-finder-api.ricardovazqueztovar.workers.dev` and `API_URL` points to it. `*.workers.dev` isn’t in this environment’s allowed domains, so a session can’t call it; add it to test from here.
 
 ## What Ricardo needs to do
 

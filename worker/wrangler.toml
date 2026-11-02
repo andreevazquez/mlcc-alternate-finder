@@ -1,6 +1,7 @@
 name = "mlcc-alternate-finder-api"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
+workers_dev = true
 
 [vars]
 # Comma-separated. Add http://localhost:8000 while testing locally.

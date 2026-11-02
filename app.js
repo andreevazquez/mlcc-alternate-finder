@@ -6,7 +6,7 @@ import {
 
 // The Cloudflare Worker in worker/ that returns live part data. Empty: the page uses only the
 // demo catalog, as before. Set it to the Worker's URL once it's deployed.
-const API_URL = "";
+const API_URL = "https://mlcc-alternate-finder-api.ricardovazqueztovar.workers.dev";
 const MPN_RE = /^[A-Za-z0-9][A-Za-z0-9\-./#+]{2,59}$/;
 
 const EXAMPLES = [
