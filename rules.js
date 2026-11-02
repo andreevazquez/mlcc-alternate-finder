@@ -66,7 +66,7 @@ export function fmtCap(pf){
 }
 export const fmtTol   = t => t == null ? "Not specified" : t === 80 ? "+80/−20%" : "±" + t + "%";
 export const fmtVolt  = v => v == null ? "Not specified" : v + " V";
-export const fmtStock = n => n === 0 ? "None" : n >= 1e6 ? trimNum(n / 1e6) + "M" : n >= 1000 ? Math.round(n / 1000) + "k" : String(n);
+export const fmtStock = n => n == null ? "Unknown" : n === 0 ? "None" : n >= 1e6 ? trimNum(n / 1e6) + "M" : n >= 1000 ? Math.round(n / 1000) + "k" : String(n);
 
 /* ---------- Live sources ---------- */
 // Search pages that show live price, stock and MOQ for a part number. The page only links to
@@ -173,7 +173,8 @@ export function evaluate(o, c, required){
   }
 
   at("tol", "Tolerance", fmtTol(o.tol), fmtTol(c.tol));
-  if (o.tol == null)        add("info", `Tolerance ${fmtTol(c.tol)}`);
+  if (c.tol == null)        add("warn", "Tolerance not listed: check the datasheet");
+  else if (o.tol == null)   add("info", `Tolerance ${fmtTol(c.tol)}`);
   else if (c.tol === o.tol) add("ok",   `Tolerance ${fmtTol(c.tol)}`);
   else if (c.tol < o.tol){  add("ok",   `Tolerance ${fmtTol(c.tol)}, tighter than needed`, "minor"); upgrades.push(`${fmtTol(c.tol)} vs ${fmtTol(o.tol)}`); }
   else                      add("bad",  `Tolerance ${fmtTol(c.tol)}, looser than ${fmtTol(o.tol)}`);
@@ -246,9 +247,9 @@ export function changeType({steps}){
 
 // Unit price and, with a quantity, total cost and the difference against the original (USD).
 export function costPlan(o, c, qty){
-  const unit = c.usd;
-  const total = qty == null ? null : unit * qty;
-  const base = o.usd ?? null;
+  const unit = c.usd ?? null;
+  const total = qty == null || unit == null ? null : unit * qty;
+  const base = unit == null ? null : o.usd ?? null;
   const deltaUnit = base == null ? null : unit - base;
   return {unit, total, deltaUnit, deltaTotal: deltaUnit == null || qty == null ? null : deltaUnit * qty,
           deltaPct: base ? deltaUnit / base : null};
@@ -280,10 +281,13 @@ const daysBetween = (a, b) => Math.round((b - a) / DAY);
 
 // Supply: stock covers the need (or, with no quantity, any stock) -> now; otherwise the factory lead time.
 // Usable: the later of supply and approval, assuming you order while approval runs.
+// Live parts can lack stock or a lead time: then the supply date is unknown (null), never guessed.
 export function supplyPlan(part, {qty = null, needBy = null, today}){
-  const fromStock = qty == null ? part.stock > 0 : part.stock >= qty;
-  const supplyWeeks = fromStock ? 0 : part.lead;
-  const coverage = qty == null ? null : Math.min(1, part.stock / qty);
+  const stock = part.stock ?? 0;
+  const fromStock = qty == null ? stock > 0 : stock >= qty;
+  const supplyWeeks = fromStock ? 0 : part.lead ?? null;
+  const coverage = qty == null || part.stock == null ? null : Math.min(1, stock / qty);
+  if (supplyWeeks == null) return {fromStock, supplyWeeks, coverage, date:null, onTime:null, late:null};
   const date = addWeeks(today, supplyWeeks);
   const late = needBy ? Math.max(0, Math.ceil(daysBetween(needBy, date) / 7)) : null;
   return {fromStock, supplyWeeks, coverage, date, onTime: needBy ? date <= needBy : null, late};
@@ -292,6 +296,7 @@ export function supplyPlan(part, {qty = null, needBy = null, today}){
 function plan(o, r, required, demand){
   const approval = approvalPath(o, r, required);
   const supply = supplyPlan(r.part, demand);
+  if (supply.supplyWeeks == null) return {approval, supply, usableWeeks:null, usableDate:null, onTime:null, lateWeeks:0};
   const usableWeeks = Math.max(supply.supplyWeeks, approval.weeks);
   const usableDate = addWeeks(demand.today, usableWeeks);
   const onTime = demand.needBy ? usableDate <= demand.needBy : null;
@@ -303,9 +308,15 @@ function plan(o, r, required, demand){
 // (drop-in, minor, major), then fit (no review items first),
 // then soonest usable in production (approval and supply), then lead time and stock.
 // Better than: only parts that improve something and give nothing up, most upgrades first.
-export function rank(o, {mode, required, demand = {}}){
+// candidates: the demo catalog by default, or live parts from the Worker. A live part
+// without capacitance, case, voltage or a supported dielectric can't be checked, so it's
+// counted in `unchecked` instead of being guessed at.
+export const isCheckable = p => p.cap != null && p.pkg != null && p.v != null && DIEL_RANK[p.diel] != null;
+export function rank(o, {mode, required, demand = {}, candidates = CATALOG}){
   demand = {qty:null, needBy:null, today:new Date(), ...demand};
-  const results = CATALOG.filter(p => p.pn !== o.pn && p.cap === o.cap).map(p => {
+  const pool = candidates.filter(p => p.pn !== o.pn && p.cap === o.cap);
+  const unchecked = pool.filter(p => !isCheckable(p)).length;
+  const results = pool.filter(isCheckable).map(p => {
     const r = evaluate(o, p, required);
     if (r.verdict !== "bad"){
       r.plan = plan(o, r, required, demand);
@@ -314,10 +325,11 @@ export function rank(o, {mode, required, demand = {}}){
     }
     return r;
   });
-  const byAvailability = (a, b) => a.part.lead - b.part.lead || b.part.stock - a.part.stock;
+  const inf = n => n ?? Infinity;
+  const byAvailability = (a, b) => (inf(a.part.lead) - inf(b.part.lead) || 0) || (b.part.stock ?? -1) - (a.part.stock ?? -1);
   const byFit = (a, b) => (b.plan.onTime === true) - (a.plan.onTime === true)
     || a.change.order - b.change.order || VERDICT_ORDER[a.verdict] - VERDICT_ORDER[b.verdict]
-    || a.plan.usableWeeks - b.plan.usableWeeks || byAvailability(a, b);
+    || (inf(a.plan.usableWeeks) - inf(b.plan.usableWeeks) || 0) || byAvailability(a, b);
 
   const passing = results.filter(r => r.verdict !== "bad");
   const ruledOut = results.filter(r => r.verdict === "bad").sort(byAvailability);
@@ -332,11 +344,47 @@ export function rank(o, {mode, required, demand = {}}){
   // Waiting for the original is the baseline every alternate competes with.
   const original = o.fromPart ? supplyPlan(o, demand) : null;
   return {
-    fits, ruledOut, equivalentOnly, demand, original,
+    fits, ruledOut, equivalentOnly, unchecked, demand, original,
     dropIns: fits.filter(r => r.change.type === "dropin").length,
     minor: fits.filter(r => r.change.type === "minor").length,
     major: fits.filter(r => r.change.type === "major").length,
     originalCost: o.usd != null ? costPlan(o, o, demand.qty) : null,
     onTime: demand.needBy ? fits.filter(r => r.plan.onTime).length : null
   };
+}
+
+
+/* ---------- Live pricing ---------- */
+// Unit price at a quantity: the highest break at or below it. Below the first break -> null.
+export function unitPriceAt(priceBreaks, qty){
+  let price = null;
+  for (const b of [...priceBreaks].sort((a, b) => a.qty - b.qty)) if (b.qty <= qty) price = b.price;
+  return price;
+}
+
+// What you actually buy: at least the MOQ, rounded up to the order multiple.
+export function orderQuantity(qty, {moq, multiple}){
+  let q = Math.max(qty, moq || 0);
+  if (multiple > 1) q = Math.ceil(q / multiple) * multiple;
+  return q;
+}
+
+// The offer to quote for a live part: among offers priced in USD, those whose stock covers the
+// order quantity first, then the lowest spend (unit price × order quantity, so a cheap reel
+// doesn't win when you need a few hundred). Without a quantity, each offer is priced at its MOQ.
+// Returns null when no distributor lists a USD price; the page then shows no price.
+export function bestOffer(offers, qty){
+  const quotes = (offers || []).map(offer => {
+    const breaks = (offer.priceBreaks || []).filter(b => b.currency === "USD");
+    const orderQty = orderQuantity(qty ?? 1, offer);
+    return {offer, orderQty, unit: breaks.length ? unitPriceAt(breaks, orderQty) : null};
+  }).filter(q => q.unit != null);
+  quotes.sort((a, b) => ((b.offer.stock ?? 0) >= b.orderQty) - ((a.offer.stock ?? 0) >= a.orderQty) || a.unit * a.orderQty - b.unit * b.orderQty);
+  return quotes[0] || null;
+}
+
+// A live part priced for this demand: usd is the unit price of the best offer, or null.
+export function priceLive(part, qty){
+  const quote = bestOffer(part.offers, qty);
+  return {...part, usd: quote ? quote.unit : null, quote};
 }

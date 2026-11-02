@@ -6,6 +6,7 @@
 // network access is to call the API for a known part and compare (see NEXT_STEPS.md).
 
 export const MOUSER_ENDPOINT = "https://api.mouser.com/api/v1/search/partnumber";
+export const MOUSER_KEYWORD_ENDPOINT = "https://api.mouser.com/api/v1/search/keyword";
 
 export function mouserRequest(mpn, apiKey){
   return {
@@ -14,6 +15,18 @@ export function mouserRequest(mpn, apiKey){
       method: "POST",
       headers: {"Content-Type": "application/json", "Accept": "application/json"},
       body: JSON.stringify({SearchByPartRequest: {mouserPartNumber: mpn, partSearchOptions: "Exact"}})
+    }
+  };
+}
+
+// Keyword search, used for alternates when Nexar is unavailable ("0.1uF 0603 X7R").
+export function mouserKeywordRequest(keyword, apiKey, records = 50){
+  return {
+    url: `${MOUSER_KEYWORD_ENDPOINT}?apiKey=${encodeURIComponent(apiKey)}`,
+    init: {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "Accept": "application/json"},
+      body: JSON.stringify({SearchByKeywordRequest: {keyword, records, startingRecord: 0}})
     }
   };
 }
@@ -39,7 +52,9 @@ const int = v => {
 
 // One Mouser part -> the shape the page uses. Missing data stays null; nothing is filled in.
 export function normalizeMouserPart(p){
-  const attrs = Object.fromEntries((p.ProductAttributes || []).map(a => [a.AttributeName, a.AttributeValue]));
+  // An attribute can repeat (Packaging: Reel, Cut Tape, MouseReel), so keep every value.
+  const attrs = {};
+  for (const a of p.ProductAttributes || []) (attrs[a.AttributeName] ||= []).push(a.AttributeValue);
   return {
     source: "Mouser",
     mpn: p.ManufacturerPartNumber ?? null,
@@ -50,7 +65,7 @@ export function normalizeMouserPart(p){
     leadWeeks: parseLeadTime(p.LeadTime),
     moq: int(p.Min),
     multiple: int(p.Mult),
-    packaging: attrs.Packaging ?? null,
+    packaging: attrs.Packaging ? attrs.Packaging.join(", ") : null,
     lifecycle: p.LifecycleStatus || null,
     datasheet: p.DataSheetUrl || null,
     url: p.ProductDetailUrl || null,
@@ -62,26 +77,16 @@ export function normalizeMouserPart(p){
 }
 
 // Keep only exact manufacturer-part-number matches (Mouser can return near matches).
-export function normalizeMouserResponse(json, mpn){
+// mpn = null keeps every result (keyword search).
+export function normalizeMouserResponse(json, mpn = null){
   const errors = json?.Errors || [];
   if (errors.length) return {error: errors.map(e => e.Message || e.Code || "Mouser error").join("; ")};
-  const want = mpn.trim().toUpperCase();
+  const want = mpn?.trim().toUpperCase();
   const parts = (json?.SearchResults?.Parts || [])
-    .filter(p => String(p.ManufacturerPartNumber || "").toUpperCase() === want)
+    .filter(p => !want || String(p.ManufacturerPartNumber || "").toUpperCase() === want)
     .map(normalizeMouserPart);
   return {parts};
 }
 
-// Unit price at a quantity: the highest break at or below it. Below the first break -> null.
-export function unitPriceAt(priceBreaks, qty){
-  let price = null;
-  for (const b of priceBreaks) if (b.qty <= qty) price = b.price;
-  return price;
-}
-
-// What you actually buy: at least the MOQ, rounded up to the order multiple.
-export function orderQuantity(qty, {moq, multiple}){
-  let q = Math.max(qty, moq || 0);
-  if (multiple > 1) q = Math.ceil(q / multiple) * multiple;
-  return q;
-}
+// Pricing helpers are shared with the page.
+export {unitPriceAt, orderQuantity} from "../../rules.js";

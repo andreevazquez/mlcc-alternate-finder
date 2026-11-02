@@ -3,9 +3,11 @@ main = "src/index.js"
 compatibility_date = "2026-10-01"
 
 [vars]
+# Comma-separated. Add http://localhost:8000 while testing locally.
 ALLOWED_ORIGIN = "https://andreevazquez.github.io"
 
-# Secrets (never in this file):
+# Secrets (never in this file). Set them in the Cloudflare dashboard
+# (Workers & Pages → mlcc-alternate-finder-api → Settings → Variables and Secrets) or with:
+#   npx wrangler secret put NEXAR_CLIENT_ID
+#   npx wrangler secret put NEXAR_CLIENT_SECRET
 #   npx wrangler secret put MOUSER_API_KEY
-#   npx wrangler secret put DIGIKEY_CLIENT_ID
-#   npx wrangler secret put DIGIKEY_CLIENT_SECRET
