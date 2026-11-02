@@ -165,3 +165,15 @@ footer p{max-width:62ch}
   .pocket{animation:feed .3s ease-out both}
   @keyframes feed{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
 }
+
+/* Live data: where the numbers come from, and the distributor offers */
+.source-note{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 8px;margin:0 0 14px;font-size:.92rem;color:var(--muted)}
+.src-live,.src-demo{font-weight:600;font-size:.8rem;letter-spacing:.02em;text-transform:uppercase;padding:2px 8px;border-radius:999px}
+.src-live{background:var(--ok-bg);color:var(--ok)}
+.src-demo{background:var(--warn-bg);color:var(--warn)}
+.cmp.offers caption{caption-side:top;text-align:left;font-weight:600;padding:8px 10px 0;color:var(--ink)}
+.cmp.offers th,.cmp.offers td{min-width:6.5em}
+.cmp.offers tr.quoted th,.cmp.offers tr.quoted td{background:var(--ok-bg)}
+.cmp.offers a{color:var(--accent);font-weight:600}
+.label .cmp-wrap{margin-top:12px}
+form[aria-busy="true"] button.primary{opacity:.7;cursor:progress}
