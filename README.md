@@ -12,10 +12,11 @@ A single-page tool that finds alternates for a multilayer ceramic capacitor (MLC
 - **Part number:** an exact match, or a unique prefix of at least 8 characters. An ambiguous prefix asks you to pick; an unknown one suggests describing the part instead.
 - **BOM description:** free text. The page reads capacitance (`100p`, `100n`, `0.1uF`, `10UF`), voltage (`50V`), case size (`0201`–`1210`), dielectric (`C0G`/`NP0`, `X7R`, `X5R`, `Y5V`), tolerance (`10%`) and grade keywords (`AEC-Q200`, `automotive`, `medical`).
 
-Two options shape the search:
+Options that shape the search:
 
 - **Looking for:** *Equivalent* or *Better than original*.
 - **Grade required:** *Same as the original*, *Commercial*, *Automotive (AEC-Q200)* or *Medical*.
+- **Demand (optional):** quantity needed (`250000`, `250,000` or `250k`) and the date you need it by.
 
 ## Substitution rules
 
@@ -28,18 +29,39 @@ Two options shape the search:
 | Tolerance | Can only get tighter. |
 | Grade | Not a ladder. AEC-Q200 satisfies commercial. Only a manufacturer’s medical-grade series satisfies medical; automotive never does. |
 | Missing fields | Anything a description leaves out is flagged for review, never silently passed. |
-| Manufacturer | A new manufacturer is an information note (it needs an approved-vendor-list entry); it doesn’t change the verdict. |
+| Lifecycle | End of life is ruled out; not recommended for new designs (NRND) needs review. Until a part’s status is verified, it shows as a note to check. |
+| Manufacturer | A new manufacturer is an information note (it needs an entry on the approved manufacturer list, AML); it doesn’t change the verdict. |
 
-**Ranking**
+## Planning: when can each alternate go into production?
 
-- *Equivalent:* verdict first, then shortest lead time, then most stock.
-- *Better than original:* only candidates that improve at least one spec or the grade while giving nothing up, sorted by number of improvements, then fit, then availability. Each shows what it’s better on.
+An alternate is only useful once it’s both **approved** and **in hand**. For every candidate the page shows:
+
+- **Supply:** immediate if distribution stock covers the quantity needed (or, with no quantity, if there is any stock); otherwise the factory lead time. With a quantity, it shows how much of it stock covers.
+- **Approval path:** the steps the change needs, with typical durations:
+
+  | Step | When | Weeks |
+  | --- | --- | --- |
+  | Engineering review | The candidate is marked “needs review” | 2 |
+  | Samples and build validation | New manufacturer (or unknown, for a description search) | 3 |
+  | PPAP and customer approval | The design is automotive | 6 |
+  | AML and ERP item master entry | Always | 1 |
+
+- **Usable in production:** the later of supply and approval, assuming you order while approval runs. With a need date, each candidate is marked on time or weeks late.
+- **The cost of waiting:** for a part-number search with a need date, the original part’s own date, so every alternate is compared against simply waiting.
+
+Durations are assumptions that vary by company and customer; they live in `APPROVAL_STEPS` in `rules.js`.
+
+## Ranking
+
+- *Equivalent:* with a need date, parts usable on time come first. Then drop-ins before parts that need review, then soonest usable, then shortest lead time and most stock.
+- *Better than original:* only candidates that improve at least one spec or the grade while giving nothing up, sorted by number of improvements, then the same order as above. Each shows what it’s better on.
 
 ## About the data
 
 - The catalog holds **30 MLCCs** (100 pF, 0.1 µF, 1 µF and 10 µF) from Murata, TDK, Samsung, Yageo, KEMET and KYOCERA AVX, in commercial and AEC-Q200 grades.
 - **Specs follow each manufacturer’s part-numbering scheme but have not all been verified against datasheets.** [DATA_CHECK.md](DATA_CHECK.md) tracks that verification. Always confirm against the datasheet before approving a substitute.
 - **Stock and lead times are simulated.**
+- **Lifecycle status (active, NRND, EOL) isn’t verified for any part yet.** It’s a column in DATA_CHECK.md; once filled in, add it to the part in `rules.js` as `life:"Active"`, `"NRND"` or `"EOL"`.
 - **There are no medical-grade parts, on purpose.** Inventing part numbers would be worse than leaving them out. A medical search explains what’s required instead: the manufacturer’s medical-grade series and, for life-support or implantable use, the manufacturer’s written approval.
 
 ## Run it locally
