@@ -105,7 +105,7 @@ export async function lookUp(mpn, env, ctx){
 
 export default {
   async fetch(request, env, ctx){
-    const headers = {"Content-Type": "application/json", ...cors(request, env)};
+    const headers = {"Content-Type": "application/json; charset=utf-8", ...cors(request, env)};
     const json = (body, status = 200) => new Response(JSON.stringify(body), {status, headers});
     if (request.method === "OPTIONS") return new Response(null, {headers: cors(request, env)});
     const url = new URL(request.url);
