@@ -6,6 +6,6 @@ compatibility_date = "2026-10-01"
 ALLOWED_ORIGIN = "https://andreevazquez.github.io"
 
 # Secrets (never in this file):
+#   npx wrangler secret put NEXAR_CLIENT_ID
+#   npx wrangler secret put NEXAR_CLIENT_SECRET
 #   npx wrangler secret put MOUSER_API_KEY
-#   npx wrangler secret put DIGIKEY_CLIENT_ID
-#   npx wrangler secret put DIGIKEY_CLIENT_SECRET

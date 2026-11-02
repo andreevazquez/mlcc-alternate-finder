@@ -1,15 +1,28 @@
 // Cloudflare Worker: live part data for the MLCC alternate finder.
 //
-//   GET /part?mpn=GRM188R71H104KA93D  ->  {mpn, fetchedAt, sources:{mouser:{parts|error}}}
+//   GET /part?mpn=GRM188R71H104KA93D
+//   -> {mpn, fetchedAt, source, part, alternates, notices, errors}
 //
-// API keys live in Worker secrets (wrangler secret put MOUSER_API_KEY) and never reach the browser.
-// Responses are cached for CACHE_SECONDS to stay inside the free API limits.
-// Digi-Key is the next source to add (see NEXT_STEPS.md).
+// Nexar (Octopart) is the primary source; Mouser is the fallback when Nexar fails or its
+// quota runs out. API keys live in Worker secrets and never reach the browser:
+//   npx wrangler secret put NEXAR_CLIENT_ID
+//   npx wrangler secret put NEXAR_CLIENT_SECRET
+//   npx wrangler secret put MOUSER_API_KEY
+// Answers are cached for CACHE_SECONDS to stay inside the free API limits.
 
-import {mouserRequest, normalizeMouserResponse} from "./mouser.js";
+import {nexarLookup, NexarError} from "./nexar.js";
+import {mouserRequest, mouserKeywordRequest, alternatesKeyword,
+        normalizeMouserResponse, normalizeMouserKeyword} from "./mouser.js";
 
-const CACHE_SECONDS = 6 * 60 * 60;
-const MPN_RE = /^[A-Za-z0-9][A-Za-z0-9\-./#+]{2,59}$/;
+export const CACHE_SECONDS = 6 * 60 * 60;
+// A Mouser-only answer (Nexar down or out of quota) is kept for less time, so Nexar comes back sooner.
+export const FALLBACK_CACHE_SECONDS = 60 * 60;
+// After Nexar says its quota is used up, skip it for this long (per Worker instance).
+const QUOTA_BACKOFF_MS = 60 * 60 * 1000;
+export const MPN_RE = /^[A-Za-z0-9][A-Za-z0-9\-./#+]{2,59}$/;
+
+let nexarBlockedUntil = 0;
+export function resetQuotaBackoff(){ nexarBlockedUntil = 0; }
 
 function cors(env){
   return {
@@ -21,16 +34,71 @@ function cors(env){
 const json = (body, status, env, extra = {}) =>
   new Response(JSON.stringify(body), {status, headers: {"Content-Type": "application/json", ...cors(env), ...extra}});
 
-async function fromMouser(mpn, env){
-  if (!env.MOUSER_API_KEY) return {error: "Mouser isn’t configured"};
-  const {url, init} = mouserRequest(mpn, env.MOUSER_API_KEY);
+// Only what the page needs.
+const clean = p => p && ({pn: p.pn, mfr: p.mfr, description: p.description, cap: p.cap, v: p.v, pkg: p.pkg,
+  diel: p.diel, tol: p.tol, grade: p.grade, life: p.life, datasheet: p.datasheet, offers: p.offers});
+
+async function fromNexar(mpn, env, fetchFn){
+  if (!env.NEXAR_CLIENT_ID || !env.NEXAR_CLIENT_SECRET) return {error: "Nexar isn’t configured"};
+  if (Date.now() < nexarBlockedUntil) return {error: "Nexar’s monthly part quota is used up", quota: true};
   try {
-    const res = await fetch(url, init);
+    return await nexarLookup(mpn, env, fetchFn);
+  } catch (e){
+    if (e.quota) nexarBlockedUntil = Date.now() + QUOTA_BACKOFF_MS;
+    return {error: e instanceof NexarError ? e.message : "Nexar couldn’t be reached", quota: !!e.quota};
+  }
+}
+
+async function fromMouser(mpn, env, fetchFn){
+  if (!env.MOUSER_API_KEY) return {error: "Mouser isn’t configured"};
+  try {
+    const {url, init} = mouserRequest(mpn, env.MOUSER_API_KEY);
+    const res = await fetchFn(url, init);
     if (!res.ok) return {error: `Mouser answered ${res.status}`};
-    return normalizeMouserResponse(await res.json(), mpn);
+    const found = normalizeMouserResponse(await res.json(), mpn);
+    if (found.error) return {error: `Mouser: ${found.error}`};
+    if (!found.part) return {part: null, alternates: []};
+    let alternates = [];
+    const keyword = alternatesKeyword(found.part);
+    if (keyword){
+      const k = mouserKeywordRequest(keyword, env.MOUSER_API_KEY);
+      const kr = await fetchFn(k.url, k.init);
+      if (kr.ok){
+        const r = normalizeMouserKeyword(await kr.json());
+        if (!r.error) alternates = r.parts.filter(p => String(p.pn).toUpperCase() !== mpn.toUpperCase());
+      }
+    }
+    return {part: found.part, alternates};
   } catch {
     return {error: "Mouser couldn’t be reached"};
   }
+}
+
+// The lookup itself, separate from HTTP and caching so it can be tested.
+export async function lookup(mpn, env, fetchFn = fetch){
+  const body = {mpn, fetchedAt: new Date().toISOString(), source: null, part: null, alternates: [], notices: [], errors: {}};
+  const nexar = await fromNexar(mpn, env, fetchFn);
+  if (!nexar.error && nexar.part){
+    return {...body, source: "Nexar", part: clean(nexar.part), alternates: nexar.alternates.map(clean)};
+  }
+  if (nexar.error) body.errors.nexar = nexar.error;
+  if (nexar.quota) body.notices.push("Nexar’s monthly part quota is used up, so this comes from Mouser only.");
+
+  const mouser = await fromMouser(mpn, env, fetchFn);
+  if (mouser.error) body.errors.mouser = mouser.error;
+  else if (mouser.part){
+    if (!nexar.quota && nexar.error) body.notices.push("Nexar didn’t answer, so this comes from Mouser only.");
+    if (!nexar.error) body.notices.push("Nexar doesn’t list this part; this comes from Mouser.");
+    return {...body, source: "Mouser", part: clean(mouser.part), alternates: mouser.alternates.map(clean)};
+  }
+  return body;
+}
+
+// Clean answers for 6 h; a Mouser fallback for 1 h; errors with nothing found aren't cached.
+export function cacheSeconds(body){
+  const failed = Object.keys(body.errors).length > 0;
+  if (!failed) return CACHE_SECONDS;
+  return body.part ? FALLBACK_CACHE_SECONDS : 0;
 }
 
 export default {
@@ -47,10 +115,10 @@ export default {
     const hit = await cache.match(key);
     if (hit) return new Response(hit.body, {headers: {...Object.fromEntries(hit.headers), ...cors(env)}});
 
-    const body = {mpn, fetchedAt: new Date().toISOString(), sources: {mouser: await fromMouser(mpn, env)}};
-    const res = json(body, 200, env, {"Cache-Control": `public, max-age=${CACHE_SECONDS}`});
-    // Only cache answers that came back without errors.
-    if (!body.sources.mouser.error) ctx.waitUntil(cache.put(key, res.clone()));
+    const body = await lookup(mpn, env);
+    const seconds = cacheSeconds(body);
+    const res = json(body, 200, env, seconds ? {"Cache-Control": `public, max-age=${seconds}`} : {"Cache-Control": "no-store"});
+    if (seconds) ctx.waitUntil(cache.put(key, res.clone()));
     return res;
   }
 };
