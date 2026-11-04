@@ -32,6 +32,7 @@ h2:focus{outline:none}
 p{margin:0 0 12px}
 .lede{color:var(--muted);font-size:1.08rem;max-width:58ch;margin-top:16px}
 .eyebrow{color:var(--accent);font-size:.78rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin:0 0 10px}
+.eyebrow-role{color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none}
 .maker-line{color:var(--muted);font-size:.93rem;margin:12px 0 0}
 .maker-line a,.author-bio a{color:var(--accent);font-weight:600}
 .case-study{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:24px}

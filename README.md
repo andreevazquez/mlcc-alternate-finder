@@ -145,7 +145,7 @@ npm test
 
 ## Author
 
-Built by Ricardo Vázquez, supply chain consultant who has implemented Kinaxis Maestro planning for pharma, food and aerospace companies. Before that, he led electronic-component planning and purchasing in automotive electronics manufacturing.
+Built by Ricardo Vázquez, who has worked supply chain from the plant floor to the system rollout: electronic-component planning and purchasing in automotive electronics manufacturing, and Kinaxis Maestro planning implementations for pharma, food and aerospace companies.
 
 ## License
 

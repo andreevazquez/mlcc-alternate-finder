@@ -42,7 +42,7 @@ const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
   h1{font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:72px;line-height:1.02;letter-spacing:-.01em;margin:0}
   .lede{font-size:26px;line-height:1.35;color:var(--muted);margin:24px 0 0;max-width:30ch}
   .by{margin-top:auto;font-size:22px;font-weight:600}
-  .by span{color:var(--muted);font-weight:500}
+  .by span{display:block;color:var(--muted);font-weight:500;margin-top:2px}
   .tape{width:470px;margin:0 0 0 0;background:var(--tape);padding:56px 36px 56px 76px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:22px}
   .tape::before{content:"";position:absolute;left:24px;top:0;bottom:0;width:28px;
     background:radial-gradient(circle at 14px 21px,var(--bg) 9px,transparent 9.5px) 0 0/28px 42px repeat-y}
@@ -56,7 +56,7 @@ const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
     <div class="kicker">MLCC ALTERNATE FINDER</div>
     <h1>Your capacitor is on allocation. Find a drop-in alternate.</h1>
     <p class="lede">Every candidate checked against real substitution rules, with the reason it passes or fails.</p>
-    <div class="by">Ricardo Vázquez <span>· Supply chain consultant</span></div>
+    <div class="by">Ricardo Vázquez <span>Supply chain, from the plant floor to the system rollout</span></div>
   </div>
   <div class="tape">${pockets.map(p => `
     <div class="pocket"><div class="pn">${p.pn}</div><div class="mfr">${p.mfr}</div><span class="chip ${p.v}">${p.label}</span></div>`).join("")}
