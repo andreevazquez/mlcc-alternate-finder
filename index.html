@@ -25,11 +25,12 @@
 <meta name="twitter:description" content="Check ceramic capacitor alternates against real substitution rules, with the reason each one passes, needs review or fails.">
 <meta name="twitter:image" content="https://andreevazquez.github.io/mlcc-alternate-finder/og-image.png">
 <meta name="twitter:image:alt" content="MLCC alternate finder: three candidate part numbers on a carrier tape, marked drop-in, needs review and not compatible.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
-<script type="module" src="app.js"></script>
+<!-- Only this site, the live-data Worker and Cloudflare Web Analytics may load scripts or receive requests. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; connect-src 'self' https://mlcc-alternate-finder-api.ricardovazqueztovar.workers.dev https://api.frankfurter.dev https://cloudflareinsights.com; style-src 'self'; font-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<link rel="preload" href="fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=2">
+<script type="module" src="app.js?v=2"></script>
 </head>
 <body>
 <main>
@@ -85,11 +86,30 @@
             <input class="text-in" id="need" name="need" type="date" aria-describedby="demand-hint">
           </div>
           <div>
-            <label for="rate" class="sub-label">Exchange rate, MXN per USD</label>
-            <input class="text-in" id="rate" name="rate" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 18.50" aria-describedby="demand-hint qty-err">
+            <label for="cur" class="sub-label">Show prices in</label>
+            <select id="cur" name="cur" aria-describedby="fx-status">
+              <option value="USD">USD, US dollar</option>
+              <option value="MXN" disabled>MXN, Mexican peso</option>
+              <option value="EUR" disabled>EUR, euro</option>
+            </select>
           </div>
         </div>
-        <p class="hint" id="demand-hint">Adds stock coverage, approval time, an on-time check and total cost to every candidate. Prices are in USD; add your exchange rate to see pesos too.</p>
+        <p class="hint" id="demand-hint">Adds stock coverage, approval time, an on-time check and total cost to every candidate.</p>
+        <section class="fx" aria-labelledby="fx-h">
+          <h2 class="fx-h" id="fx-h">Exchange rates <span class="opt">(for information)</span></h2>
+          <p class="fx-status" id="fx-status" aria-live="polite">Loading today’s rates…</p>
+          <ul class="fx-rates" id="fx-rates" hidden></ul>
+          <div class="fx-conv" id="fx-conv" hidden>
+            <label for="fx-amt" class="sub-label">Convert</label>
+            <div class="fx-row">
+              <input class="text-in" id="fx-amt" type="text" inputmode="decimal" autocomplete="off" value="1000" aria-describedby="fx-out">
+              <select id="fx-from" aria-label="Currency to convert from">
+                <option value="USD">USD</option><option value="MXN">MXN</option><option value="EUR">EUR</option>
+              </select>
+            </div>
+            <output class="fx-out" id="fx-out" for="fx-amt fx-from"></output>
+          </div>
+        </section>
         <p class="error" id="qty-err" role="alert" hidden></p>
       </fieldset>
       <p class="hint" id="q-hint"></p>
@@ -131,6 +151,7 @@
       </div>
     </details>
     <p class="author-bio">Built by Ricardo Vázquez. I have worked supply chain from the plant floor to the system rollout: component planning and purchasing in automotive electronics, and Kinaxis Maestro implementations in pharma, food and aerospace. <a href="https://linkedin.com/in/ricardovazquez88" target="_blank" rel="noopener noreferrer">Connect on LinkedIn<span class="sr-only"> (opens in a new tab)</span></a> · <a href="https://github.com/andreevazquez/mlcc-alternate-finder" target="_blank" rel="noopener noreferrer">Project source on GitHub<span class="sr-only"> (opens in a new tab)</span></a>.</p>
+    <p class="next-project">Stop firefighting shortages. Size the inventory policy that prevents them <span aria-hidden="true">→</span> <a href="https://andreevazquez.github.io/pull-program-fit-analyzer/" target="_blank" rel="noopener noreferrer">Pull Program Fit Analyzer<span class="sr-only"> (opens in a new tab)</span></a></p>
   </footer>
 </main>
 <!-- Cloudflare Web Analytics: anonymous page-view counts, no cookies. It never sees uploaded files or results. --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "2a342b9bf8874b93b2075fd289181a4a"}'></script><!-- End Cloudflare Web Analytics -->

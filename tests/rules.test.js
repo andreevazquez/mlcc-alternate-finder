@@ -2,7 +2,7 @@ import {test, describe} from "node:test";
 import assert from "node:assert/strict";
 import {
   CATALOG, BY_PN, fmtCap, fmtTol, fmtWeek, isoWeek, meetsGrade, parseQuery, parseQty,
-  evaluate, rank, approvalPath, supplyPlan, changeType, costPlan, CHECK_ROWS, liveSources
+  evaluate, rank, approvalPath, supplyPlan, changeType, costPlan, CHECK_ROWS, liveSources, safeUrl
 } from "../rules.js";
 
 const TODAY = new Date(2026, 10, 2); // Monday, ISO week 45
@@ -367,5 +367,16 @@ describe("live sources", () => {
     assert.deepEqual(links.map(l => l.name), ["TrustedParts", "Octopart", "Findchips", "Digi-Key", "Mouser"]);
     assert.ok(links.every(l => l.url.startsWith("https://") && l.url.includes("GRM188R71H104KA93D")));
     assert.ok(liveSources("A B/C").every(l => l.url.includes("A%20B%2FC")));
+  });
+});
+
+describe("safeUrl", () => {
+  test("keeps http and https links", () => {
+    assert.equal(safeUrl("https://www.murata.com/ds.pdf"), "https://www.murata.com/ds.pdf");
+    assert.equal(safeUrl(" http://example.com/a "), "http://example.com/a");
+  });
+  test("drops script, data and malformed links", () => {
+    for (const u of ["javascript:alert(1)", " JavaScript:alert(1)", "data:text/html,<b>x</b>", "vbscript:x", "/relative", "", null, undefined, 42])
+      assert.equal(safeUrl(u), null, String(u));
   });
 });

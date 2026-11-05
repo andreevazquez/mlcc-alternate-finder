@@ -1,8 +1,9 @@
 // DOM rendering and wiring. All substitution logic lives in rules.js.
 import {
   CATALOG, BY_PN, CAP_VALUES, GRADES, CHECK_ROWS,
-  fmtCap, fmtTol, fmtVolt, fmtStock, fmtWeek, addWeeks, parseQty, parseQuery, rank, liveSources, priceLive
-} from "./rules.js";
+  fmtCap, fmtTol, fmtVolt, fmtStock, fmtWeek, addWeeks, parseQty, parseQuery, rank, liveSources, priceLive, safeUrl
+} from "./rules.js?v=2";
+import {FX_URL, FX_SOURCE, CURRENCIES, parseRates, convert, crossRates} from "./fx.js?v=2";
 
 // The Cloudflare Worker in worker/ that returns live part data. Empty: the page uses only the
 // demo catalog, as before. Set it to the Worker's URL once it's deployed.
@@ -46,7 +47,7 @@ function renderOffers(o, rate){
     const breaks = (f.priceBreaks || []).filter(b => b.currency === "USD");
     const from = breaks.length ? `from ${breaks[0].qty.toLocaleString("en-US")}: ${money(breaks[0].price, rate, 4)}` : "No USD price";
     return `<tr${q ? ` class="quoted"` : ""}>
-      <th scope="row">${f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer nofollow">${esc(f.seller || "Distributor")}<span class="sr-only"> (opens in a new tab)</span></a>` : esc(f.seller || "Distributor")}${f.sku ? `<span class="cell-note">${esc(f.sku)}</span>` : ""}</th>
+      <th scope="row">${safeUrl(f.url) ? `<a href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener noreferrer nofollow">${esc(f.seller || "Distributor")}<span class="sr-only"> (opens in a new tab)</span></a>` : esc(f.seller || "Distributor")}${f.sku ? `<span class="cell-note">${esc(f.sku)}</span>` : ""}</th>
       <td>${fmtStock(f.stock)}</td>
       <td>${f.moq == null ? "—" : f.moq.toLocaleString("en-US")}${f.multiple > 1 ? `<span class="cell-note">multiples of ${f.multiple.toLocaleString("en-US")}</span>` : ""}</td>
       <td>${leadText(f.leadWeeks)}</td>
@@ -71,16 +72,20 @@ const LEVEL_CHIP = {same:"v-ok", minor:"v-warn", critical:"v-bad"};
 let current = null;
 
 const num = (n, d) => n.toLocaleString("en-US", {minimumFractionDigits:d, maximumFractionDigits:d});
-// Prices are in USD; with an exchange rate, MXN follows.
+// Prices are quoted in USD. rate is null for USD, or {cur, k} to show the price in MXN or EUR
+// at k per USD first, with the USD figure after it.
+const inCur = (usd, rate, d) => `${CURRENCIES[rate.cur].symbol}${num(usd * rate.k, rate.cur === "MXN" && d === 4 ? 3 : d)}`;
 function money(usd, rate, d){
   const s = `US$${num(usd, d)}`;
-  return rate ? `${s} · MX$${num(usd * rate, d === 4 ? 3 : d)}` : s;
+  return rate ? `${inCur(usd, rate, d)} · ${s}` : s;
 }
-// Same, for the comparison table: pesos on their own line so columns stay narrow.
+// Same, for the comparison table: the USD figure on its own line so columns stay narrow.
 function moneyCell(usd, rate, d, sign = false){
   const lead = sign ? (usd > 0 ? "+" : usd < 0 ? "−" : "±") : "";
-  const a = Math.abs(usd);
-  return `${lead}US$${num(sign ? a : usd, d)}${rate ? `<span class="mxn">${lead}MX$${num((sign ? a : usd) * rate, d === 4 ? 3 : d)}</span>` : ""}`;
+  const v = sign ? Math.abs(usd) : usd;
+  return rate
+    ? `${lead}${inCur(v, rate, d)}<span class="alt-cur">${lead}US$${num(v, d)}</span>`
+    : `${lead}US$${num(v, d)}`;
 }
 const signedMoney = (usd, rate, d) => (usd > 0 ? "+" : usd < 0 ? "−" : "±") + money(Math.abs(usd), rate, d);
 const pct = x => `${x > 0 ? "+" : x < 0 ? "−" : "±"}${Math.round(Math.abs(x) * 100)}%`;
@@ -94,8 +99,8 @@ function getOptions(){
   const qty = parseQty($("qty").value);
   const [y, m, d] = $("need").value.split("-").map(Number);
   const needBy = y ? new Date(y, m - 1, d) : null;
-  const rateRaw = $("rate").value.trim().replace(",", ".");
-  const rate = rateRaw === "" ? null : Number(rateRaw) > 0 ? Number(rateRaw) : NaN;
+  const cur = $("cur").value;
+  const rate = cur !== "USD" && fx.rates ? {cur, k: fx.rates.perUsd[cur]} : null;
   return {mode, grade, qty, rate, demand:{qty: Number.isNaN(qty) ? null : qty, needBy, today:today()}};
 }
 
@@ -125,7 +130,7 @@ function renderOriginal(o, required, {demand, original}, rate, live){
         o.lead == null ? "no factory lead time listed" : `typical factory lead time ${o.lead} wk (median of distributor quotes)`}.${waitText(original, demand)}</p>
       ${suggestion}
       ${renderOffers(o, rate)}
-      ${o.datasheet ? `<p class="live"><a href="${esc(o.datasheet)}" target="_blank" rel="noopener noreferrer nofollow">Datasheet<span class="sr-only"> (opens in a new tab)</span></a></p>` : ""}
+      ${safeUrl(o.datasheet) ? `<p class="live"><a href="${esc(safeUrl(o.datasheet))}" target="_blank" rel="noopener noreferrer nofollow">Datasheet<span class="sr-only"> (opens in a new tab)</span></a></p>` : ""}
       ${liveLinks(o.pn)}`
     : `<p class="shortage">Simulated: ${o.stock ? fmtStock(o.stock) + " in stock" : "no stock"} at distribution, ${o.lead}-week factory lead time.${waitText(original, demand)}</p>${liveLinks(o.pn)}`}`;
 }
@@ -186,7 +191,7 @@ function renderCompare(o, ranking, rate, live){
     plain(live ? "Unit price" : "Unit price (simulated)", o.fromPart && o.usd != null ? moneyCell(o.usd, rate, 4) : "—", cols.map(r =>
       `<td>${r.cost.unit == null ? "Not listed" : moneyCell(r.cost.unit, rate, 4)}${r.cost.deltaPct == null ? "" : `<span class="cell-note">${pct(r.cost.deltaPct)} vs original</span>`}</td>`)),
     ...(demand.qty ? [plain(`Cost for ${fmtStock(demand.qty)}`, o.fromPart && o.usd != null ? moneyCell(o.usd * demand.qty, rate, 0) : "—", cols.map(r =>
-      `<td>${r.cost.total == null ? "Not listed" : moneyCell(r.cost.total, rate, 0)}${r.cost.deltaTotal == null ? "" : `<span class="cell-note">${moneyCell(r.cost.deltaTotal, rate, 0, true).replace('<span class="mxn">', " · ").replace("</span>", "")} vs original</span>`}</td>`))] : [])
+      `<td>${r.cost.total == null ? "Not listed" : moneyCell(r.cost.total, rate, 0)}${r.cost.deltaTotal == null ? "" : `<span class="cell-note">${moneyCell(r.cost.deltaTotal, rate, 0, true).replace('<span class="alt-cur">', " · ").replace("</span>", "")} vs original</span>`}</td>`))] : [])
   ].join("");
 
   return `
@@ -367,18 +372,11 @@ async function search(query, {focusResults = true} = {}){
 }
 
 function render({query, parsed, live, problem}, {focusResults}){
-  const {mode, grade, qty, rate: rateIn, demand} = getOptions();
-  const qtyBad = Number.isNaN(qty), rateBad = Number.isNaN(rateIn);
-  const rate = rateBad ? null : rateIn;
-  const problems = [
-    qtyBad && "Enter the quantity as a number, like 250000 or 250k.",
-    rateBad && "Enter the exchange rate as a number, like 18.50."
-  ].filter(Boolean);
-  $("qty-err").hidden = !problems.length;
-  $("qty-err").textContent = problems.length ? `${problems.join(" ")} Results below ignore it.` : "";
-  for (const [id, bad] of [["qty", qtyBad], ["rate", rateBad]]){
-    if (bad) $(id).setAttribute("aria-invalid", "true"); else $(id).removeAttribute("aria-invalid");
-  }
+  const {mode, grade, qty, rate, demand} = getOptions();
+  const qtyBad = Number.isNaN(qty);
+  $("qty-err").hidden = !qtyBad;
+  $("qty-err").textContent = qtyBad ? "Enter the quantity as a number, like 250000 or 250k. Results below ignore it." : "";
+  if (qtyBad) $("qty").setAttribute("aria-invalid", "true"); else $("qty").removeAttribute("aria-invalid");
 
   // Live: price every part for this quantity. Demo: the catalog as it is.
   const spec = live ? {...priceLive(live.part, demand.qty), fromPart:true} : parsed.spec;
@@ -417,9 +415,68 @@ function render({query, parsed, live, problem}, {focusResults}){
   }
 }
 
+/* ---------- Exchange rates ---------- */
+// Loaded once per visit. If they can't be loaded, prices stay in USD and the panel says why.
+const fx = {rates: null};
+const CUR_KEY = "mlcc.currency";
+const store = {
+  get(){ try { return localStorage.getItem(CUR_KEY); } catch { return null; } },
+  set(v){ try { localStorage.setItem(CUR_KEY, v); } catch { /* private mode: not remembered */ } }
+};
+const fmtRate = r => num(r, 4);
+const fmtFxDate = iso => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", {day:"numeric", month:"short", year:"numeric", timeZone:"UTC"});
+
+function renderConverter(){
+  const amt = Number($("fx-amt").value.trim().replace(/,/g, ""));
+  const from = $("fx-from").value;
+  const out = $("fx-out");
+  if (!fx.rates) { out.textContent = ""; return; }
+  if (!Number.isFinite(amt) || amt < 0){ out.textContent = "Enter an amount, like 1000."; return; }
+  const sym = c => CURRENCIES[c].symbol;
+  out.textContent = `${sym(from)}${num(amt, 2)} = ` + Object.keys(CURRENCIES).filter(c => c !== from)
+    .map(c => `${sym(c)}${num(convert(amt, from, c, fx.rates.perUsd), 2)}`).join(" · ");
+}
+
+function renderFx(){
+  const status = $("fx-status");
+  if (!fx.rates){
+    status.textContent = "Couldn’t load today’s exchange rates, so prices are shown in USD only. Reload the page to try again.";
+    status.classList.add("fx-error");
+    return;
+  }
+  status.classList.remove("fx-error");
+  status.textContent = `${FX_SOURCE}, ${fmtFxDate(fx.rates.date)}. Updated once per working day; for information only, not a bank or customs rate.`;
+  $("fx-rates").innerHTML = crossRates(fx.rates.perUsd)
+    .filter(x => x.from !== "MXN")
+    .map(x => `<li><span class="fx-pair">1 ${x.from}</span> = <b>${esc(fmtRate(x.rate))}</b> ${x.to}</li>`).join("");
+  $("fx-rates").hidden = false;
+  $("fx-conv").hidden = false;
+  renderConverter();
+}
+
+async function loadRates(){
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  try {
+    // no-cache: revalidate with Frankfurter on each visit instead of trusting a day-old copy.
+    const res = await fetch(FX_URL, {signal: ctl.signal, cache: "no-cache"});
+    fx.rates = res.ok ? parseRates(await res.json()) : null;
+  } catch {
+    fx.rates = null;
+  } finally {
+    clearTimeout(timer);
+  }
+  for (const opt of $("cur").options) opt.disabled = opt.value !== "USD" && !fx.rates;
+  const saved = store.get();
+  if (fx.rates && saved && CURRENCIES[saved]) $("cur").value = saved;
+  if (!fx.rates) $("cur").value = "USD";
+  renderFx();
+  if (current) render(current, {focusResults:false});
+}
+
 /* ---------- Wiring ---------- */
 function setOptions({mode, grade, qty = "", weeks = null}){
-  // The exchange rate is the viewer's own; examples leave it as it is.
+  // The display currency is the viewer's own; examples leave it as it is.
   document.querySelector(`input[name="mode"][value="${mode}"]`).checked = true;
   $("grade").value = grade;
   $("qty").value = qty;
@@ -439,7 +496,8 @@ function init(){
   $("q").addEventListener("input", () => { if (!$("q-err").hidden) clearError(); });
   // Changing what you're looking for re-runs the last search in place.
   $("search-form").addEventListener("change", e => {
-    if (e.target.id === "q" || !current) return;
+    if (e.target.id === "cur") store.set(e.target.value);
+    if (e.target.id === "q" || e.target.closest(".fx") || !current) return;
     render(current, {focusResults:false});
   });
   $("examples").addEventListener("click", e => {
@@ -453,7 +511,9 @@ function init(){
 
   // A shared link like …#GRM188R71H104KA93D opens straight to that part.
   const fromHash = () => {
-    const pn = decodeURIComponent(location.hash.slice(1)).toUpperCase();
+    // A malformed hash such as "#%" must not stop the page, so decoding errors are ignored.
+    let pn;
+    try { pn = decodeURIComponent(location.hash.slice(1)).trim().toUpperCase(); } catch { return; }
     const shown = current && (current.live?.part.pn || current.parsed.spec?.pn);
     if ((BY_PN.has(pn) || (API_URL && MPN_RE.test(pn))) && shown?.toUpperCase() !== pn){
       $("q").value = pn;
@@ -462,6 +522,12 @@ function init(){
   };
   addEventListener("hashchange", fromHash);
   fromHash();
+
+  // The converter is separate from the search: typing in it never submits the form.
+  $("fx-amt").addEventListener("input", renderConverter);
+  $("fx-from").addEventListener("change", renderConverter);
+  $("fx-amt").addEventListener("keydown", e => { if (e.key === "Enter") e.preventDefault(); });
+  loadRates();
 }
 
 init();
