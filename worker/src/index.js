@@ -13,6 +13,8 @@ import {mouserRequest, mouserKeywordRequest, normalizeMouserResponse} from "./mo
 import {fromNexar, fromMouser, alternatesQuery} from "./parts.js";
 
 const CACHE_SECONDS = 6 * 60 * 60;
+// Bump when the shape of a cached answer changes, so old answers aren't served after a deploy.
+const CACHE_VERSION = "v2";
 const ALTERNATES_LIMIT = 10; // each part returned counts against the Nexar quota
 const MPN_RE = /^[A-Za-z0-9][A-Za-z0-9\-./#+]{2,59}$/;
 
@@ -29,7 +31,7 @@ function cors(request, env){
 
 async function cached(key, compute, ctx){
   const cache = globalThis.caches?.default;
-  const req = new Request(`https://cache.local/${key}`);
+  const req = new Request(`https://cache.local/${CACHE_VERSION}/${key}`);
   const hit = cache && await cache.match(req);
   if (hit) return hit.json();
   const value = await compute();
