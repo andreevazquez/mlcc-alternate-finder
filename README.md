@@ -18,7 +18,8 @@ Options that shape the search:
 
 - **Looking for:** *Equivalent* or *Better than original*.
 - **Grade required:** *Same as the original*, *Commercial*, *Automotive (AEC-Q200)* or *Medical*.
-- **Demand and cost (optional):** quantity needed (`250000`, `250,000` or `250k`), the date you need it by, and your exchange rate in MXN per USD.
+- **Demand and cost (optional):** quantity needed (`250000`, `250,000` or `250k`), and the date you need it by.
+- **Show prices in:** USD, MXN or EUR. See *Exchange rates* below.
 
 ## Substitution rules
 
@@ -50,7 +51,7 @@ Each candidate also gets a **type of change**, from the steps it needs:
 - **Minor change:** new manufacturer; samples and an AML entry, no design change.
 - **Major change:** a product engineer must review it or, for an automotive design, it needs PPAP and customer approval.
 
-Below the specs, the table shows type of change, lead time, stock, the date each part is usable in production, the simulated unit price and, with a quantity, the total cost and the difference against the original, in USD and, with an exchange rate, MXN.
+Below the specs, the table shows type of change, lead time, stock, the date each part is usable in production, the simulated unit price and, with a quantity, the total cost and the difference against the original, in the currency you pick, with the USD figure under it.
 
 ## Planning: when can each alternate go into production?
 
@@ -84,6 +85,15 @@ Durations are assumptions that vary by company and customer; they live in `APPRO
 - **Live data is one click away.** Every part links to its search page on TrustedParts, Octopart, Findchips, Digi-Key and Mouser, which show live price, stock and MOQ. The page links to them; it doesn’t copy their data.
 - **Lifecycle status (active, NRND, EOL) isn’t verified for any part yet.** It’s a column in DATA_CHECK.md; once filled in, add it to the part in `rules.js` as `life:"Active"`, `"NRND"` or `"EOL"`.
 - **There are no medical-grade parts, on purpose.** Inventing part numbers would be worse than leaving them out. A medical search explains what’s required instead: the manufacturer’s medical-grade series and, for life-support or implantable use, the manufacturer’s written approval.
+
+## Exchange rates
+
+Prices are quoted in USD. On each visit the page loads the European Central Bank reference rates for USD, MXN and EUR from [Frankfurter](https://frankfurter.dev) (free, no key, CORS enabled). The ECB publishes them once per working day around 16:00 CET, so they are informational: not a bank, customs (DOF) or Banxico FIX rate.
+
+- A panel shows 1 USD and 1 EUR in the other two currencies, the rate date, and a converter for any amount.
+- **Show prices in** converts every price and cost on the page to MXN or EUR; the USD figure stays next to it. The choice is remembered in that browser.
+- If the rates can’t be loaded, MXN and EUR are disabled, prices stay in USD and the panel says so. A rate is never guessed or kept from an earlier visit.
+- The logic is in `fx.js` (tested by `tests/fx.test.js`).
 
 ## Live data
 
@@ -128,7 +138,7 @@ npm test
 
 ## Security
 
-- A Content-Security-Policy `<meta>` in `index.html` allows scripts only from this site and Cloudflare Web Analytics, and requests only to this site, the Worker and the analytics endpoint. If `API_URL` changes, update `connect-src` too.
+- A Content-Security-Policy `<meta>` in `index.html` allows scripts only from this site and Cloudflare Web Analytics, and requests only to this site, the Worker, Frankfurter (exchange rates) and the analytics endpoint. If `API_URL` changes, update `connect-src` too.
 - Links that come from distributor APIs (datasheets, offer pages) are rendered only when they are `http(s)` URLs (`safeUrl` in `rules.js`).
 - A malformed deep link (for example `#%`) is ignored instead of stopping the page.
 
@@ -140,6 +150,7 @@ npm test
 | `styles.css` | Styles, light and dark mode |
 | `rules.js` | Catalog, parsing, rules, ranking and formatting. Pure logic, no DOM |
 | `app.js` | Rendering and event wiring |
+| `fx.js` | Exchange-rate parsing and conversion (USD, MXN, EUR). Pure logic |
 | `tests/rules.test.js` | Tests for `rules.js` |
 | `worker/src/index.js` | Cloudflare Worker: `GET /part?mpn=…`, source order and caching |
 | `worker/src/nexar.js`, `worker/src/mouser.js` | Nexar and Mouser requests and response parsing |
