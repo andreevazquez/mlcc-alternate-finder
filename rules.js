@@ -71,6 +71,16 @@ export const fmtStock = n => n == null ? "Unknown" : n === 0 ? "None" : n >= 1e6
 /* ---------- Live sources ---------- */
 // Search pages that show live price, stock and MOQ for a part number. The page only links to
 // them; it never copies their data.
+// Links that come from a distributor API are only shown if they are plain http(s) URLs,
+// so a "javascript:" or "data:" value in a listing can never run in this page.
+export function safeUrl(u){
+  if (typeof u !== "string") return null;
+  try {
+    const url = new URL(u.trim());
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch { return null; }
+}
+
 export function liveSources(pn){
   const q = encodeURIComponent(pn);
   return [

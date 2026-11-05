@@ -1,8 +1,8 @@
 // DOM rendering and wiring. All substitution logic lives in rules.js.
 import {
   CATALOG, BY_PN, CAP_VALUES, GRADES, CHECK_ROWS,
-  fmtCap, fmtTol, fmtVolt, fmtStock, fmtWeek, addWeeks, parseQty, parseQuery, rank, liveSources, priceLive
-} from "./rules.js";
+  fmtCap, fmtTol, fmtVolt, fmtStock, fmtWeek, addWeeks, parseQty, parseQuery, rank, liveSources, priceLive, safeUrl
+} from "./rules.js?v=2";
 
 // The Cloudflare Worker in worker/ that returns live part data. Empty: the page uses only the
 // demo catalog, as before. Set it to the Worker's URL once it's deployed.
@@ -46,7 +46,7 @@ function renderOffers(o, rate){
     const breaks = (f.priceBreaks || []).filter(b => b.currency === "USD");
     const from = breaks.length ? `from ${breaks[0].qty.toLocaleString("en-US")}: ${money(breaks[0].price, rate, 4)}` : "No USD price";
     return `<tr${q ? ` class="quoted"` : ""}>
-      <th scope="row">${f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer nofollow">${esc(f.seller || "Distributor")}<span class="sr-only"> (opens in a new tab)</span></a>` : esc(f.seller || "Distributor")}${f.sku ? `<span class="cell-note">${esc(f.sku)}</span>` : ""}</th>
+      <th scope="row">${safeUrl(f.url) ? `<a href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener noreferrer nofollow">${esc(f.seller || "Distributor")}<span class="sr-only"> (opens in a new tab)</span></a>` : esc(f.seller || "Distributor")}${f.sku ? `<span class="cell-note">${esc(f.sku)}</span>` : ""}</th>
       <td>${fmtStock(f.stock)}</td>
       <td>${f.moq == null ? "—" : f.moq.toLocaleString("en-US")}${f.multiple > 1 ? `<span class="cell-note">multiples of ${f.multiple.toLocaleString("en-US")}</span>` : ""}</td>
       <td>${leadText(f.leadWeeks)}</td>
@@ -125,7 +125,7 @@ function renderOriginal(o, required, {demand, original}, rate, live){
         o.lead == null ? "no factory lead time listed" : `typical factory lead time ${o.lead} wk (median of distributor quotes)`}.${waitText(original, demand)}</p>
       ${suggestion}
       ${renderOffers(o, rate)}
-      ${o.datasheet ? `<p class="live"><a href="${esc(o.datasheet)}" target="_blank" rel="noopener noreferrer nofollow">Datasheet<span class="sr-only"> (opens in a new tab)</span></a></p>` : ""}
+      ${safeUrl(o.datasheet) ? `<p class="live"><a href="${esc(safeUrl(o.datasheet))}" target="_blank" rel="noopener noreferrer nofollow">Datasheet<span class="sr-only"> (opens in a new tab)</span></a></p>` : ""}
       ${liveLinks(o.pn)}`
     : `<p class="shortage">Simulated: ${o.stock ? fmtStock(o.stock) + " in stock" : "no stock"} at distribution, ${o.lead}-week factory lead time.${waitText(original, demand)}</p>${liveLinks(o.pn)}`}`;
 }
@@ -453,7 +453,9 @@ function init(){
 
   // A shared link like …#GRM188R71H104KA93D opens straight to that part.
   const fromHash = () => {
-    const pn = decodeURIComponent(location.hash.slice(1)).toUpperCase();
+    // A malformed hash such as "#%" must not stop the page, so decoding errors are ignored.
+    let pn;
+    try { pn = decodeURIComponent(location.hash.slice(1)).trim().toUpperCase(); } catch { return; }
     const shown = current && (current.live?.part.pn || current.parsed.spec?.pn);
     if ((BY_PN.has(pn) || (API_URL && MPN_RE.test(pn))) && shown?.toUpperCase() !== pn){
       $("q").value = pn;

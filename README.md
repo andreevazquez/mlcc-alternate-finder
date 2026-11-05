@@ -126,6 +126,12 @@ Requires Node 18 or later. Uses the built-in `node:test` runner; nothing to inst
 npm test
 ```
 
+## Security
+
+- A Content-Security-Policy `<meta>` in `index.html` allows scripts only from this site and Cloudflare Web Analytics, and requests only to this site, the Worker and the analytics endpoint. If `API_URL` changes, update `connect-src` too.
+- Links that come from distributor APIs (datasheets, offer pages) are rendered only when they are `http(s)` URLs (`safeUrl` in `rules.js`).
+- A malformed deep link (for example `#%`) is ignored instead of stopping the page.
+
 ## Project layout
 
 | File | Contents |
@@ -139,6 +145,9 @@ npm test
 | `worker/src/nexar.js`, `worker/src/mouser.js` | Nexar and Mouser requests and response parsing |
 | `worker/src/parts.js` | Maps distributor data to the part shape `rules.js` checks |
 | `tests/live.test.js`, `tests/mouser.test.js` | Tests for the Worker, against hand-written fixtures |
+| `fonts/` | Self-hosted Barlow, Barlow Semi Condensed and JetBrains Mono (latin subset, SIL OFL), so the page makes no Google Fonts request |
+| `scripts/release.mjs` | `npm run release`: runs the tests, then bumps `?v=N` on `styles.css`, `app.js` and the `rules.js` import. Run it before each deploy |
+| `.github/workflows/test.yml` | Runs `npm test` on every push and pull request |
 | `scripts/make-og-image.mjs` | Regenerates `og-image.png` and `apple-touch-icon.png` (needs Playwright: `npm i --no-save playwright && npx playwright install chromium`, then `npm run og-image`) |
 | `DATA_CHECK.md` | Datasheet verification checklist for the catalog |
 | `ROADMAP.md` | Current scope, limitations and prioritized next improvements |
