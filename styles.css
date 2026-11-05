@@ -108,6 +108,7 @@ select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .fields dt{color:var(--muted);font-size:.82rem}
 .fields dd{margin:0;font-weight:600}
 .shortage{margin:12px 0 0;padding-top:10px;border-top:1px dashed var(--line);color:var(--bad);font-weight:500}
+.decoded-note{margin:8px 0 0}
 .recommendation{margin:12px 0 0;padding:12px;border-left:4px solid var(--warn);border-radius:4px;background:var(--warn-bg);font-size:.93rem}
 .recommendation a{display:inline-block;color:var(--accent);font-weight:600;padding:6px 0}
 

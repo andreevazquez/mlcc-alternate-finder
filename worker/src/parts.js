@@ -3,6 +3,8 @@
 // Units follow rules.js: cap in picofarads, v in volts, tol in percent (+80/−20 stored as 80), lead in weeks.
 // Anything that can't be parsed stays null: the page then says it's missing instead of guessing.
 
+import {fillFromMpn} from "./mpn.js";
+
 const CASES = ["01005", "0201", "0402", "0603", "0805", "1206", "1210", "1812", "2220"];
 
 // "100nF", "0.1 µF", "100 pF", "0.1uF" -> pF
@@ -80,7 +82,7 @@ function supply(offers){
 // A part from nexar.js normalizeNexarPart.
 export function fromNexar(p){
   const s = p.specs || {};
-  return {
+  return fillFromMpn({
     source: "Nexar", pn: p.mpn, mfr: p.manufacturer, description: p.description,
     cap: parseCapacitance(pick(s, /^capacitance$/i)),
     v: parseVoltage(pick(s, /voltage.*rat|rated voltage|^voltage/i)),
@@ -92,11 +94,13 @@ export function fromNexar(p){
     ...supply(p.offers || []),
     offers: p.offers || [],
     datasheet: p.datasheet, url: p.url
-  };
+  });
 }
 
 // Mouser lists most specs only in the description, e.g.
 // "Multilayer Ceramic Capacitors MLCC - SMD/SMT 0603 0.1uF 50volts X7R 10%".
+// When the description has none (a part being phased out often shows only "RECOMMENDED ALT …"),
+// the specs are read from the part number instead; see mpn.js.
 // Several Mouser results with the same MPN (reel, cut tape) become one part with several offers.
 export function fromMouser(parts){
   const byMpn = new Map();
@@ -121,7 +125,7 @@ export function fromMouser(parts){
     // Mouser offers for one MPN share one stock pool, so take the largest instead of adding them up.
     const stocks = p.offers.map(o => o.stock).filter(n => n != null);
     const leads = p.offers.map(o => o.leadWeeks).filter(n => n != null);
-    return {...p, stock: stocks.length ? Math.max(...stocks) : null, lead: median(leads)};
+    return fillFromMpn({...p, stock: stocks.length ? Math.max(...stocks) : null, lead: median(leads)});
   });
 }
 

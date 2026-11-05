@@ -2,8 +2,8 @@
 import {
   CATALOG, BY_PN, CAP_VALUES, GRADES, CHECK_ROWS,
   fmtCap, fmtTol, fmtVolt, fmtStock, fmtWeek, addWeeks, parseQty, parseQuery, rank, liveSources, priceLive, safeUrl
-} from "./rules.js?v=2";
-import {FX_URL, FX_SOURCE, CURRENCIES, parseRates, convert, crossRates} from "./fx.js?v=2";
+} from "./rules.js?v=3";
+import {FX_URL, FX_SOURCE, CURRENCIES, parseRates, convert, crossRates} from "./fx.js?v=3";
 
 // The Cloudflare Worker in worker/ that returns live part data. Empty: the page uses only the
 // demo catalog, as before. Set it to the Worker's URL once it's deployed.
@@ -112,6 +112,10 @@ function renderOriginal(o, required, {demand, original}, rate, live){
   const suggestion = live && o.recommendedAlt
     ? `<p class="recommendation"><b>Mouser listing suggests</b> <span class="pn">${esc(o.recommendedAlt)}</span> — not checked for compatibility. <a href="${esc(liveSources(o.recommendedAlt).find(s => s.name === "Mouser").url)}" target="_blank" rel="noopener noreferrer">Check Mouser’s listing<span class="sr-only"> (opens in a new tab)</span></a></p>`
     : "";
+  const FIELD_NAME = {cap: "capacitance", v: "voltage", pkg: "case", diel: "dielectric", tol: "tolerance"};
+  const decoded = live && o.decoded?.length
+    ? `<p class="hint decoded-note">The ${esc(SOURCE_NAME[live.source] || live.source)} listing doesn’t state the ${esc(new Intl.ListFormat("en", {type: "conjunction"}).format(o.decoded.map(k => FIELD_NAME[k])))}, so ${o.decoded.length > 1 ? "they were" : "it was"} read from the part number. Confirm against the datasheet.</p>`
+    : "";
   $("orig").innerHTML = `
     <div class="label-top">${title}<div class="barcode" aria-hidden="true"></div></div>
     <dl class="fields">
@@ -128,7 +132,7 @@ function renderOriginal(o, required, {demand, original}, rate, live){
     ${!o.fromPart ? "" : live ? `
       <p class="shortage">${o.stock == null ? "No distributor lists stock" : o.stock ? `${fmtStock(o.stock)} in stock at authorised distributors` : "No stock at authorised distributors"}, ${
         o.lead == null ? "no factory lead time listed" : `typical factory lead time ${o.lead} wk (median of distributor quotes)`}.${waitText(original, demand)}</p>
-      ${suggestion}
+      ${decoded}${suggestion}
       ${renderOffers(o, rate)}
       ${safeUrl(o.datasheet) ? `<p class="live"><a href="${esc(safeUrl(o.datasheet))}" target="_blank" rel="noopener noreferrer nofollow">Datasheet<span class="sr-only"> (opens in a new tab)</span></a></p>` : ""}
       ${liveLinks(o.pn)}`
