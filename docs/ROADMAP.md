@@ -5,10 +5,11 @@ MLCC Alternate Finder is a portfolio prototype for screening ceramic-capacitor a
 ## What works
 
 - Search by manufacturer part number or a supported BOM description.
-- Compare candidates against capacitance, package, voltage, dielectric, tolerance, grade, lifecycle, and manufacturer checks.
+- Compare candidates against capacitance, package, height, voltage, dielectric, temperature, tolerance, grade, termination, lifecycle, and manufacturer checks.
+- Flag what engineering must review: DC bias, height and termination.
 - Estimate supply and approval timing when inputs are available.
 - Query Nexar first and use Mouser as a fallback; keep provider credentials in Worker secrets.
-- Fall back to a clearly identified demo catalog when a description is entered or live data is unavailable.
+- Fall back to a clearly identified demo catalog when a description is entered or live data doesn't answer within 5 seconds, using specs read from the part number when it isn't in the catalog.
 
 ## Known limitations
 
@@ -23,5 +24,5 @@ MLCC Alternate Finder is a portfolio prototype for screening ceramic-capacitor a
 1. Verify provider field mappings and lifecycle/specification data against current manufacturer datasheets.
 2. Improve handling of supplier-recommended replacements and localized listing descriptions while keeping recommendations explicitly unverified until checked.
 3. Add browser-level tests for provider failures, incomplete data, keyboard use, and mobile layouts.
-4. Add portfolio context: a short problem–approach–outcome case study and a direct professional contact link.
+4. Read DC-bias curves from manufacturer tools (Murata SimSurfing, KEMET K-SIM, TDK SEAT) to replace the DC-bias flag with an effective-capacitance estimate.
 5. Consider multi-line BOM screening after the single-part workflow and data quality are dependable.

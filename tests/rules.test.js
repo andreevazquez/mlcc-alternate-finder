@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   CATALOG, BY_PN, fmtCap, fmtTol, fmtWeek, isoWeek, meetsGrade, parseQuery, parseQty,
   evaluate, rank, approvalPath, supplyPlan, changeType, costPlan, CHECK_ROWS, liveSources, safeUrl
-} from "../rules.js";
+} from "../js/rules.js";
 
 const TODAY = new Date(2026, 10, 2); // Monday, ISO week 45
 
@@ -20,9 +20,9 @@ const errorOf = q => {
 const pns = results => results.map(r => r.part.pn);
 
 describe("catalog", () => {
-  test("has 30 unique part numbers", () => {
-    assert.equal(CATALOG.length, 30);
-    assert.equal(BY_PN.size, 30);
+  test("has 31 unique part numbers", () => {
+    assert.equal(CATALOG.length, 31);
+    assert.equal(BY_PN.size, 31);
   });
   test("has no medical-grade parts", () => {
     assert.ok(CATALOG.every(p => p.grade !== "medical"));
@@ -119,7 +119,7 @@ describe("grade rules", () => {
   test("automotive requirement rules out every commercial part", () => {
     const o = BY_PN.get("GRM188R71H104KA93D");
     const {fits} = rank(o, {mode:"equivalent", required:"automotive"});
-    assert.deepEqual(pns(fits).sort(), ["CGA3E2X7R1H104K080AA", "GCM188R71H104KA57D"]);
+    assert.deepEqual(pns(fits).sort(), ["CGA3E2X7R1H104K080AA", "GCJ188R71H104KA12D", "GCM188R71H104KA57D"]);
   });
   test("nothing but medical grade replaces medical", () => {
     const o = spec("100pF 50V C0G 0603");
@@ -138,10 +138,10 @@ describe("other rules", () => {
     assert.equal(evaluate(o, BY_PN.get("CL21B104KBCNNNC"), "commercial").verdict, "bad");     // 0805
     assert.equal(evaluate(o, BY_PN.get("CL10F104ZB8NNNC"), "commercial").verdict, "bad");     // Y5V
   });
-  test("higher voltage passes but needs review for part height", () => {
+  test("higher voltage passes but needs review for height and DC bias", () => {
     const r = evaluate(o, BY_PN.get("GRM188R72A104KA35D"), "commercial");
     assert.equal(r.verdict, "warn");
-    assert.ok(r.checks.some(k => /check part height/.test(k.text)));
+    assert.ok(r.checks.some(k => /confirm height and DC-bias curve/.test(k.text)));
   });
   test("new manufacturer is an AML note that doesn’t change the verdict", () => {
     const r = evaluate(o, BY_PN.get("CL10B104KB8NNNC"), "commercial");
@@ -185,7 +185,8 @@ describe("ranking", () => {
     const order = {ok:0, warn:1};
     for (let i = 1; i < fits.length; i++){
       const a = fits[i - 1], b = fits[i];
-      const cmp = a.change.order - b.change.order || order[a.verdict] - order[b.verdict] || a.plan.usableWeeks - b.plan.usableWeeks
+      const cmp = a.change.order - b.change.order || order[a.verdict] - order[b.verdict] || a.flags.length - b.flags.length
+        || a.plan.usableWeeks - b.plan.usableWeeks
         || a.part.lead - b.part.lead || b.part.stock - a.part.stock;
       assert.ok(cmp <= 0, `${a.part.pn} should not rank above ${b.part.pn}`);
     }
@@ -222,7 +223,7 @@ describe("ranking", () => {
   test("tally counts by type of change match the fits", () => {
     const r = rank(BY_PN.get("GRM188R71H104KA93D"), {mode:"equivalent", required:"commercial"});
     assert.equal(r.dropIns + r.minor + r.major, r.fits.length);
-    assert.deepEqual([r.dropIns, r.minor, r.major], [1, 6, 1]);
+    assert.deepEqual([r.dropIns, r.minor, r.major], [2, 6, 1]);
   });
 });
 
@@ -250,8 +251,8 @@ describe("demand and supply", () => {
     assert.equal(isoWeek(TODAY), 45);
     assert.equal(isoWeek(new Date(2026, 11, 28)), 53);
     assert.equal(isoWeek(new Date(2027, 0, 4)), 1);
-    assert.equal(fmtWeek(new Date(2026, 10, 30), TODAY), "wk 49 · Nov 30");
-    assert.equal(fmtWeek(new Date(2027, 4, 3), TODAY), "wk 18 · May 3, 2027");
+    assert.equal(fmtWeek(new Date(2026, 10, 30)), "wk 49 · 30 Nov 2026");
+    assert.equal(fmtWeek(new Date(2027, 4, 3)), "wk 18 · 3 May 2027");
   });
 });
 

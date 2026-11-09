@@ -6,7 +6,7 @@ import {
   parseGrade, fromNexar, fromMouser, alternatesQuery, median
 } from "../worker/src/parts.js";
 import worker, {lookUp} from "../worker/src/index.js";
-import {rank, bestOffer, priceLive, isCheckable} from "../rules.js";
+import {rank, bestOffer, priceLive, isCheckable} from "../js/rules.js";
 
 // Hand-written responses in the documented shapes, to test the parsing only.
 // Part numbers and values are invented and never shown on the page.
@@ -254,5 +254,30 @@ describe("Worker request limits", () => {
     const response = await worker.fetch(request, {}, {});
     assert.equal(response.status, 503);
     assert.match((await response.json()).error, /protection is unavailable/);
+  });
+
+  const limiter = {limit: async () => ({success: true})};
+  const env = {ALLOWED_ORIGIN: "https://andreevazquez.github.io", MLCC_LIMITER: limiter};
+  const call = (path, init = {}) => worker.fetch(new Request(`https://worker.test${path}`, init), env, {waitUntil(){}});
+
+  test("only the site's own origin gets CORS headers", async () => {
+    const ok = await call("/part?mpn=x", {headers: {Origin: "https://andreevazquez.github.io"}});
+    assert.equal(ok.headers.get("Access-Control-Allow-Origin"), "https://andreevazquez.github.io");
+    const other = await call("/part?mpn=x", {headers: {Origin: "https://evil.example"}});
+    assert.equal(other.headers.get("Access-Control-Allow-Origin"), null);
+  });
+  test("every response carries security headers", async () => {
+    for (const res of [await call("/nope"), await call("/part?mpn=x"), await call("/part", {method: "OPTIONS"})]){
+      assert.equal(res.headers.get("X-Content-Type-Options"), "nosniff");
+      assert.equal(res.headers.get("Referrer-Policy"), "no-referrer");
+      assert.match(res.headers.get("Content-Security-Policy"), /default-src 'none'/);
+    }
+  });
+  test("rejects other methods, extra parameters, and over-long or malformed part numbers before any lookup", async () => {
+    assert.equal((await call("/part?mpn=GRM188R71H104KA93D", {method: "POST"})).status, 405);
+    assert.equal((await call("/part?mpn=GRM188R71H104KA93D&x=1")).status, 400);
+    assert.equal((await call(`/part?mpn=${"A".repeat(61)}`)).status, 400);
+    assert.equal((await call("/part?mpn=%3Cscript%3E")).status, 400);
+    assert.equal((await call(`/part?mpn=A&pad=${"x".repeat(300)}`)).status, 414);
   });
 });

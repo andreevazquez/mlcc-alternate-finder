@@ -1,7 +1,8 @@
 // Exchange rates for display only. Prices from distributors and the demo catalog are in USD;
-// the page converts them to MXN or EUR at the European Central Bank reference rate, which
-// Frankfurter (https://frankfurter.dev, no key) publishes once per working day.
-// Pure logic, no DOM, so tests can run it in Node.
+// the page can show them in MXN or EUR at the European Central Bank reference rate, which
+// Frankfurter (https://frankfurter.dev, no key) publishes once per working day. The Worker fetches
+// and caches the rate (GET /fx), so the page itself calls no third-party API.
+// Pure logic, no DOM, so tests can run it in Node and the Worker can import it.
 
 export const FX_URL = "https://api.frankfurter.dev/v1/latest?base=USD&symbols=MXN,EUR";
 export const FX_SOURCE = "European Central Bank reference rate, via Frankfurter";
@@ -27,17 +28,4 @@ export function parseRates(json){
     perUsd[cur] = r;
   }
   return {date: json.date, perUsd};
-}
-
-// Converts an amount between USD, MXN and EUR. Returns null for an unknown currency.
-export function convert(amount, from, to, perUsd){
-  const a = perUsd?.[from], b = perUsd?.[to];
-  if (!Number.isFinite(amount) || !(a > 0) || !(b > 0)) return null;
-  return amount / a * b;
-}
-
-// The six cross rates the panel lists: how much one unit of each currency is in the others.
-export function crossRates(perUsd){
-  const codes = Object.keys(CURRENCIES);
-  return codes.flatMap(from => codes.filter(to => to !== from).map(to => ({from, to, rate: convert(1, from, to, perUsd)})));
 }

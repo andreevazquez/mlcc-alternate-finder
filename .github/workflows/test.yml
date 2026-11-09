@@ -17,3 +17,5 @@ jobs:
           node-version: 22
       - name: Rules, live-data mapping and Worker tests
         run: npm test
+      - name: Dependency audit (fails on high or critical)
+        run: npm audit --audit-level=high

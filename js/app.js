@@ -1,20 +1,29 @@
 // DOM rendering and wiring. All substitution logic lives in rules.js.
 import {
   CATALOG, BY_PN, CAP_VALUES, GRADES, CHECK_ROWS,
-  fmtCap, fmtTol, fmtVolt, fmtStock, fmtWeek, addWeeks, parseQty, parseQuery, rank, liveSources, priceLive, safeUrl
-} from "./rules.js?v=3";
-import {FX_URL, FX_SOURCE, CURRENCIES, parseRates, convert, crossRates} from "./fx.js?v=3";
+  fmtCap, fmtTol, fmtVolt, fmtStock, fmtWeek, fmtDate, fmtHeight, fmtTerm, addWeeks, parseQty, parseQuery, parseNeedDate,
+  rank, liveSources, priceLive, safeUrl, specFromPartNumber
+} from "./rules.js?v=4";
+import {CURRENCIES} from "./fx.js?v=4";
 
 // The Cloudflare Worker in worker/ that returns live part data. Empty: the page uses only the
 // demo catalog, as before. Set it to the Worker's URL once it's deployed.
 const API_URL = "https://mlcc-alternate-finder-api.ricardovazqueztovar.workers.dev";
 const MPN_RE = /^[A-Za-z0-9][A-Za-z0-9\-./#+]{2,59}$/;
+// Live lookups give up after this long and fall back to the demo catalog.
+const LIVE_TIMEOUT_MS = 5000;
 
 const EXAMPLES = [
-  {label:"Compare 0.1 µF options, 250k needed in 4 weeks", query:"0.1uF 50V X7R 0603", mode:"equivalent", grade:"same", qty:"250k", weeks:4},
-  {label:"10 µF from a BOM line, better than",  query:"CAP CER 10UF 10V X5R 0805",   mode:"better",     grade:"same"},
-  {label:"Automotive grade, 50k in 12 weeks", query:"0.1uF 50V X7R 0603 AEC-Q200", mode:"equivalent", grade:"automotive", qty:"50k", weeks:12},
-  {label:"100 pF for a medical device",         query:"100pF 50V C0G 0603",          mode:"equivalent", grade:"medical"}
+  {label:"0.1 µF on allocation", desc:"250k needed in 4 weeks. Who can be approved and in hand on time?",
+   query:"GRM188R71H104KA93D", mode:"equivalent", grade:"same", qty:"250k", weeks:4, demo:true},
+  {label:"Automotive line", desc:"AEC-Q200, 50k in 12 weeks: PPAP, DC bias, height and termination flags.",
+   query:"0.1uF 50V X7R 0603 AEC-Q200", mode:"equivalent", grade:"automotive", qty:"50k", weeks:12},
+  {label:"Upgrade a BOM line", desc:"10 µF X5R from a BOM description: only parts that give nothing up.",
+   query:"CAP CER 10UF 10V X5R 0805", mode:"better", grade:"same"},
+  {label:"Medical device", desc:"100 pF C0G: why nothing in a commercial catalog qualifies.",
+   query:"100pF 50V C0G 0603", mode:"equivalent", grade:"medical"},
+  {label:"Live part number", desc:"An end-of-life Murata part, with live Mouser stock and offers.",
+   query:"GRM188R71H104KA93D", mode:"equivalent", grade:"same", live:true}
 ];
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -65,9 +74,9 @@ function renderOffers(o, rate){
     </div>`;
 }
 
-// Comparison colors: green same, yellow differs without impact, red needs a product engineer.
-const MARK = {same:"✓", minor:"≈", critical:"!"};
-const LEVEL_SR = {same:"Same", minor:"Minor difference", critical:"Product engineer review"};
+// Comparison colors: green same, yellow differs without impact, grey not listed, red needs a product engineer.
+const MARK = {same:"✓", minor:"≈", unknown:"?", critical:"!"};
+const LEVEL_SR = {same:"Same", minor:"Minor difference", unknown:"Not listed", critical:"Product engineer review"};
 const LEVEL_CHIP = {same:"v-ok", minor:"v-warn", critical:"v-bad"};
 let current = null;
 
@@ -97,17 +106,17 @@ function getOptions(){
   const mode = document.querySelector('input[name="mode"]:checked').value;
   const grade = $("grade").value;
   const qty = parseQty($("qty").value);
-  const [y, m, d] = $("need").value.split("-").map(Number);
-  const needBy = y ? new Date(y, m - 1, d) : null;
+  const need = parseNeedDate($("need").value, today());
   const cur = $("cur").value;
   const rate = cur !== "USD" && fx.rates ? {cur, k: fx.rates.perUsd[cur]} : null;
-  return {mode, grade, qty, rate, demand:{qty: Number.isNaN(qty) ? null : qty, needBy, today:today()}};
+  return {mode, grade, qty, rate, needError: need.error || null,
+    demand:{qty: Number.isNaN(qty) ? null : qty, needBy: need.date ?? null, today:today()}};
 }
 
 function renderOriginal(o, required, {demand, original}, rate, live){
   const title = o.fromPart
-    ? `<div><div class="pn">${esc(o.pn)}</div><div class="maker">${esc(live ? [o.mfr, o.description].filter(Boolean).join(" · ") : `${o.mfr} ceramic capacitor`)}</div></div>`
-    : `<div><div class="pn">Spec from your description</div><div class="maker">No part number, so matching on these specs</div></div>`;
+    ? `<div><div class="pn">${esc(o.pn)}</div><div class="mfr">${esc(live ? [o.mfr, o.description].filter(Boolean).join(" · ") : `${o.mfr} ceramic capacitor`)}</div></div>`
+    : `<div><div class="pn">Spec from your description</div><div class="mfr">No part number, so matching on these specs</div></div>`;
   const field = (k, v) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`;
   const suggestion = live && o.recommendedAlt
     ? `<p class="recommendation"><b>Mouser listing suggests</b> <span class="pn">${esc(o.recommendedAlt)}</span> — not checked for compatibility. <a href="${esc(liveSources(o.recommendedAlt).find(s => s.name === "Mouser").url)}" target="_blank" rel="noopener noreferrer">Check Mouser’s listing<span class="sr-only"> (opens in a new tab)</span></a></p>`
@@ -122,10 +131,11 @@ function renderOriginal(o, required, {demand, original}, rate, live){
       ${field("Capacitance", fmtCap(o.cap))}${field("Voltage", fmtVolt(o.v))}
       ${field("Case", o.pkg || "Not specified")}${field("Dielectric", o.diel || "Not specified")}
       ${field("Tolerance", fmtTol(o.tol))}${field("Grade", GRADES[o.grade].label)}
+      ${o.fromPart ? field("Height (max)", fmtHeight(o.h)) + field("Termination", fmtTerm(o.term)) : ""}
       ${required !== o.grade ? field("Grade required now", GRADES[required].label) : ""}
       ${demand.qty ? field("Quantity needed", fmtStock(demand.qty)) : ""}
       ${demand.needBy ? field("Needed by", fmtWeek(demand.needBy, demand.today)) : ""}
-      ${o.fromPart ? field(live ? "Unit price" : "Unit price (simulated)", priceOr(o.usd, rate, 4)) : ""}
+      ${o.fromPart ? field(live || o.offline ? "Unit price" : "Unit price (simulated)", priceOr(o.usd, rate, 4, o.offline ? "Unknown offline" : undefined)) : ""}
       ${o.fromPart && demand.qty && o.usd != null ? field(`Cost for ${fmtStock(demand.qty)}`, money(o.usd * demand.qty, rate, 0)) : ""}
       ${live && o.life ? field("Lifecycle", o.life) : ""}
     </dl>
@@ -136,7 +146,9 @@ function renderOriginal(o, required, {demand, original}, rate, live){
       ${renderOffers(o, rate)}
       ${safeUrl(o.datasheet) ? `<p class="live"><a href="${esc(safeUrl(o.datasheet))}" target="_blank" rel="noopener noreferrer nofollow">Datasheet<span class="sr-only"> (opens in a new tab)</span></a></p>` : ""}
       ${liveLinks(o.pn)}`
-    : `<p class="shortage">Simulated: ${o.stock ? fmtStock(o.stock) + " in stock" : "no stock"} at distribution, ${o.lead}-week factory lead time.${waitText(original, demand)}</p>${liveLinks(o.pn)}`}`;
+    : o.offline
+      ? `<p class="shortage">Specs read from the part number. Stock, lead time and price are unknown without live data.</p>${liveLinks(o.pn)}`
+      : `<p class="shortage">Simulated: ${o.stock ? fmtStock(o.stock) + " in stock" : "no stock"} at distribution, ${o.lead}-week factory lead time.${waitText(original, demand)}</p>${liveLinks(o.pn)}`}`;
 }
 
 // What happens if you just wait for the original part.
@@ -184,7 +196,10 @@ function renderCompare(o, ranking, rate, live){
   const sec = label => `<tr class="sec"><th scope="colgroup" colspan="${cols.length + 2}">${label}</th></tr>`;
 
   const datasheet = CHECK_ROWS.map(key =>
-    `<tr><th scope="row">${rows[0][key].label}</th><td class="orig">${esc(rows[0][key].orig)}</td>${rows.map(m => cell(m[key])).join("")}</tr>`).join("");
+    `<tr><th scope="row">${rows[0][key].label}</th><td class="orig">${esc(rows[0][key].orig)}</td>${rows.map(m => cell(m[key])).join("")}</tr>`).join("")
+    + plain("Engineering review flags", "—", cols.map(r => `<td>${r.flags.length
+      ? `<ul class="flag-list">${r.flags.map(f => `<li><span class="flag-chip">${esc(f.title)}</span></li>`).join("")}</ul>`
+      : `<span class="cell-note">None</span>`}</td>`));
   const planning = [
     plain("Type of change", "—", cols.map(r =>
       `<td><span class="verdict ${LEVEL_CHIP[r.change.level]}">${r.change.label}</span><span class="cell-note">${esc(r.change.reason)}</span></td>`)),
@@ -255,17 +270,20 @@ function renderCandidates(o, ranking, {mode, required, rate, live}){
     <ul class="legend" aria-label="Color key">
       <li><span class="sw sw-same" aria-hidden="true">✓</span>Same</li>
       <li><span class="sw sw-minor" aria-hidden="true">≈</span>Differs, no impact</li>
+      <li><span class="sw sw-unknown" aria-hidden="true">?</span>Not listed</li>
       <li><span class="sw sw-critical" aria-hidden="true">!</span>Needs a product engineer</li>
     </ul>` : "";
   $("cand-body").innerHTML = fits.length
     ? `${lateNote}${legend}${renderCompare(o, ranking, rate, live)}<h3 class="cmp-h">All candidates</h3><ol class="tape" aria-label="${mode === "better" ? "Upgrades ranked by number of improvements" : demand.needBy ? "Candidates ranked by on-time, fit, then usable date" : "Candidates ranked by fit, then usable date"}">${fits.map(r => `
         <li class="pocket">
           <div class="pocket-head">
-            <h3><span class="pn">${esc(r.part.pn)}</span> <span class="maker">${esc(r.part.mfr)}</span></h3>
+            <h3><span class="pn">${esc(r.part.pn)}</span> <span class="mfr">${esc(r.part.mfr)}</span></h3>
             <span class="verdict ${LEVEL_CHIP[r.change.level]}">${r.change.label}</span>
           </div>
           <p class="change-why">${esc(r.change.reason)}</p>
           ${r.upgrades.length ? `<p class="better">Better on: ${r.upgrades.map(esc).join(", ")}</p>` : ""}
+          ${r.flags.length ? `<div class="flags"><p class="flags-h">Engineering review flags</p><ul>${r.flags.map(f =>
+            `<li><span class="flag-chip">${esc(f.title)}</span> ${esc(f.text)}</li>`).join("")}</ul></div>` : ""}
           <ul class="checks">${r.checks.map(k => `
             <li><span class="mark m-${k.level}" aria-hidden="true">${MARK[k.level]}</span><span><span class="sr-only">${LEVEL_SR[k.level]}: </span>${esc(k.text)}</span></li>`).join("")}
           </ul>
@@ -283,7 +301,7 @@ function renderCandidates(o, ranking, {mode, required, rate, live}){
   $("ruled-wrap").open = !fits.length && mode !== "better" && required !== "medical";
   $("ruled-sum").textContent = `Ruled out (${ruledOut.length})`;
   $("ruled").innerHTML = ruledOut.map(r => `
-    <li><span class="pn">${esc(r.part.pn)}</span> <span class="maker">${esc(r.part.mfr)}</span>
+    <li><span class="pn">${esc(r.part.pn)}</span> <span class="mfr">${esc(r.part.mfr)}</span>
     <span class="why">${r.fails.map(esc).join("; ")}</span></li>`).join("");
 
   return `${fits.length} shown, ${ruledOut.length} ruled out.${onTime != null ? ` ${onTime} usable by the need date.` : ""}`;
@@ -318,14 +336,14 @@ const liveCache = new Map(); // mpn -> Promise of {data} or {error}
 function fetchLive(mpn){
   if (!liveCache.has(mpn)){
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 15000);
+    const timer = setTimeout(() => ctl.abort(), LIVE_TIMEOUT_MS);
     liveCache.set(mpn, fetch(`${API_URL}/part?mpn=${encodeURIComponent(mpn)}`, {signal: ctl.signal})
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`the live-data service answered ${r.status}`)))
       .then(data => {
         if (!data.part) liveCache.delete(mpn); // not found or failed: ask again next time
         return {data};
       })
-      .catch(e => { liveCache.delete(mpn); return {error: e.name === "AbortError" ? "the live-data service took too long" : e.message || "the live-data service couldn’t be reached"}; })
+      .catch(e => { liveCache.delete(mpn); return {error: e.name === "AbortError" ? `no answer within ${LIVE_TIMEOUT_MS / 1000} s` : e.message === "Failed to fetch" ? "the live-data service couldn’t be reached" : e.message || "the live-data service couldn’t be reached"}; })
       .finally(() => clearTimeout(timer)));
   }
   return liveCache.get(mpn);
@@ -336,7 +354,8 @@ function liveProblem(mpn, {data, error}){
   if (error) return `Live data isn’t available right now (${error}).`;
   const errs = data.errors || {};
   const reasons = [errs.Nexar, errs.Mouser].filter(Boolean);
-  if (errs.planLimit && !data.part) return `Nexar’s plan limits this lookup; check the account’s result limit or use the Mouser fallback. ${reasons.filter(e => !/plan limits/i.test(e)).join("; ")}`.trim();
+  if (data.error) return `Live data isn’t available right now (${data.error}).`;
+  if (errs.planLimit && !data.part) return `Live data isn’t available: Nexar’s plan limit is reached and Mouser didn’t list the part. ${reasons.filter(e => !/plan limits/i.test(e)).join("; ")}`.trim();
   if (errs.quota && !data.part) return "Live data isn’t available: this month’s Octopart (Nexar) quota is used up and Mouser didn’t answer either.";
   if (errs.rateLimit && !data.part) return `Nexar temporarily rate-limited this lookup; retry shortly. ${reasons.filter(e => !/rate-limited/i.test(e)).join("; ")}`.trim();
   if (reasons.length && reasons.every(e => /doesn’t list/.test(e)))
@@ -349,21 +368,38 @@ function setNote(html){
   $("source-note").hidden = !html;
 }
 
+// While a live lookup runs, a skeleton stands in for the results, so the page never looks stuck.
+function setLoading(on, mpn){
+  $("search-form").toggleAttribute("aria-busy", on);
+  $("go").textContent = on ? "Searching…" : "Find alternates";
+  $("loading").hidden = !on;
+  if (on){
+    $("results").hidden = true;
+    $("status").textContent = `Looking up ${mpn} at authorised distributors…`;
+  }
+}
+
 let seq = 0;
-async function search(query, {focusResults = true} = {}){
-  const parsed = parseQuery(query);
-  const mpn = liveMpn(query, parsed);
+async function search(query, {focusResults = true, demo = false} = {}){
+  let parsed = parseQuery(query);
+  const mpn = demo ? null : liveMpn(query, parsed);
   let live = null, problem = null;
   const mine = ++seq;
   if (mpn){
     clearError();
-    $("status").textContent = `Looking up ${mpn}…`;
-    $("search-form").setAttribute("aria-busy", "true");
+    setLoading(true, mpn);
+    if (focusResults) $("loading").scrollIntoView({block:"nearest"});
     const res = await fetchLive(mpn);
     if (mine !== seq) return; // a newer search started meanwhile
-    $("search-form").removeAttribute("aria-busy");
+    setLoading(false);
     if (res.data?.part) live = res.data;
     else problem = liveProblem(mpn, res);
+  }
+  // Fallback: no live data and not in the demo catalog. If the part number's format is readable,
+  // match its specs against the demo catalog rather than stop.
+  if (!live && parsed.error && mpn){
+    const offline = specFromPartNumber(mpn);
+    if (offline) parsed = {spec: offline};
   }
   if (!live && parsed.error){
     showError(problem ? `${problem} ${parsed.error.replace(/ Describe it instead/, " You can describe it instead")}` : parsed.error);
@@ -376,11 +412,14 @@ async function search(query, {focusResults = true} = {}){
 }
 
 function render({query, parsed, live, problem}, {focusResults}){
-  const {mode, grade, qty, rate, demand} = getOptions();
+  const {mode, grade, qty, rate, demand, needError} = getOptions();
   const qtyBad = Number.isNaN(qty);
   $("qty-err").hidden = !qtyBad;
   $("qty-err").textContent = qtyBad ? "Enter the quantity as a number, like 250000 or 250k. Results below ignore it." : "";
-  if (qtyBad) $("qty").setAttribute("aria-invalid", "true"); else $("qty").removeAttribute("aria-invalid");
+  $("qty").toggleAttribute("aria-invalid", qtyBad);
+  $("need-err").hidden = !needError;
+  $("need-err").textContent = needError ? `${needError} Results below ignore the date.` : "";
+  $("need").toggleAttribute("aria-invalid", !!needError);
 
   // Live: price every part for this quantity. Demo: the catalog as it is.
   const spec = live ? {...priceLive(live.part, demand.qty), fromPart:true} : parsed.spec;
@@ -398,6 +437,8 @@ function render({query, parsed, live, problem}, {focusResults}){
   setNote(live
     ? `<span class="src-live">Live</span> ${esc(source)} · ${esc(fmtAgo(live.fetchedAt))}${providerNote}${
         live.alternatesSource && live.alternatesSource !== live.source ? `. Alternates from ${esc(SOURCE_NAME[live.alternatesSource] || live.alternatesSource)}.` : ""}`
+    : problem && parsed.spec?.offline
+      ? `<span class="src-demo">Offline</span> ${esc(problem)} Specs were read from the part number and matched against the demo catalog: its stock, lead times and prices are simulated.`
     : problem
       ? `<span class="src-demo">Demo</span> ${esc(problem)} Showing the demo catalog instead: stock, lead times and prices are simulated.`
       : API_URL && !parsed.spec?.fromPart
@@ -420,62 +461,40 @@ function render({query, parsed, live, problem}, {focusResults}){
 }
 
 /* ---------- Exchange rates ---------- */
-// Loaded once per visit. If they can't be loaded, prices stay in USD and the panel says why.
+// Loaded once per visit from this site's Worker, which caches the ECB reference rate.
+// If they can't be loaded, MXN and EUR stay disabled and prices show in USD.
 const fx = {rates: null};
 const CUR_KEY = "mlcc.currency";
 const store = {
   get(){ try { return localStorage.getItem(CUR_KEY); } catch { return null; } },
   set(v){ try { localStorage.setItem(CUR_KEY, v); } catch { /* private mode: not remembered */ } }
 };
-const fmtRate = r => num(r, 4);
-const fmtFxDate = iso => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", {day:"numeric", month:"short", year:"numeric", timeZone:"UTC"});
 
-function renderConverter(){
-  const amt = Number($("fx-amt").value.trim().replace(/,/g, ""));
-  const from = $("fx-from").value;
-  const out = $("fx-out");
-  if (!fx.rates) { out.textContent = ""; return; }
-  if (!Number.isFinite(amt) || amt < 0){ out.textContent = "Enter an amount, like 1000."; return; }
-  const sym = c => CURRENCIES[c].symbol;
-  out.textContent = `${sym(from)}${num(amt, 2)} = ` + Object.keys(CURRENCIES).filter(c => c !== from)
-    .map(c => `${sym(c)}${num(convert(amt, from, c, fx.rates.perUsd), 2)}`).join(" · ");
-}
-
-function renderFx(){
-  const status = $("fx-status");
-  if (!fx.rates){
-    status.textContent = "Couldn’t load today’s exchange rates, so prices are shown in USD only. Reload the page to try again.";
-    status.classList.add("fx-error");
-    return;
-  }
-  status.classList.remove("fx-error");
-  status.textContent = `${FX_SOURCE}, ${fmtFxDate(fx.rates.date)}. Updated once per working day; for information only, not a bank or customs rate.`;
-  $("fx-rates").innerHTML = crossRates(fx.rates.perUsd)
-    .filter(x => x.from !== "MXN")
-    .map(x => `<li><span class="fx-pair">1 ${x.from}</span> = <b>${esc(fmtRate(x.rate))}</b> ${x.to}</li>`).join("");
-  $("fx-rates").hidden = false;
-  $("fx-conv").hidden = false;
-  renderConverter();
+function renderCurHint(){
+  const cur = $("cur").value;
+  $("cur-hint").textContent = !fx.rates
+    ? (fx.failed ? "Exchange rates aren’t available right now, so prices show in USD only." : "")
+    : cur === "USD" ? ""
+    : `1 USD = ${num(fx.rates.perUsd[cur], 4)} ${cur}, European Central Bank reference rate of ${fmtDate(new Date(`${fx.rates.date}T12:00:00`))}. For information only; distributors quote in USD.`;
 }
 
 async function loadRates(){
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 8000);
+  if (!API_URL) return;
   try {
-    // no-cache: revalidate with Frankfurter on each visit instead of trusting a day-old copy.
-    const res = await fetch(FX_URL, {signal: ctl.signal, cache: "no-cache"});
-    fx.rates = res.ok ? parseRates(await res.json()) : null;
+    const res = await fetch(`${API_URL}/fx`, {signal: AbortSignal.timeout(LIVE_TIMEOUT_MS)});
+    const body = res.ok ? await res.json() : null;
+    const ok = body && /^\d{4}-\d{2}-\d{2}$/.test(body.date) && ["MXN", "EUR"].every(c => body.perUsd?.[c] > 0);
+    fx.rates = ok ? {date: body.date, perUsd: {USD: 1, MXN: body.perUsd.MXN, EUR: body.perUsd.EUR}} : null;
   } catch {
     fx.rates = null;
-  } finally {
-    clearTimeout(timer);
   }
+  fx.failed = !fx.rates;
   for (const opt of $("cur").options) opt.disabled = opt.value !== "USD" && !fx.rates;
   const saved = store.get();
   if (fx.rates && saved && CURRENCIES[saved]) $("cur").value = saved;
   if (!fx.rates) $("cur").value = "USD";
-  renderFx();
-  if (current) render(current, {focusResults:false});
+  renderCurHint();
+  if (current && $("cur").value !== "USD") render(current, {focusResults:false});
 }
 
 /* ---------- Wiring ---------- */
@@ -484,7 +503,29 @@ function setOptions({mode, grade, qty = "", weeks = null}){
   document.querySelector(`input[name="mode"][value="${mode}"]`).checked = true;
   $("grade").value = grade;
   $("qty").value = qty;
-  $("need").value = weeks ? isoDate(addWeeks(today(), weeks)) : "";
+  $("need").value = weeks ? fmtDate(addWeeks(today(), weeks)) : "";
+}
+
+// Needed by: typed ("9 Dec 2026", "wk 50") or picked from the native calendar, always shown as 9 Dec 2026.
+function wireNeedDate(){
+  const text = $("need"), pick = $("need-pick");
+  pick.addEventListener("click", () => { try { pick.showPicker(); } catch { /* the overlay opens it */ } });
+  pick.addEventListener("change", () => {
+    const [y, m, d] = pick.value.split("-").map(Number);
+    if (!y) return;
+    text.value = fmtDate(new Date(y, m - 1, d));
+    text.dispatchEvent(new Event("change", {bubbles:true}));
+  });
+  text.addEventListener("change", () => {
+    const {date} = parseNeedDate(text.value, today());
+    if (date){ text.value = fmtDate(date); pick.value = isoDate(date); }
+  });
+}
+
+function runExample(ex, {focusResults = true} = {}){
+  setOptions(ex);
+  $("q").value = ex.query;
+  search(ex.query, {demo: !!ex.demo, focusResults});
 }
 
 function init(){
@@ -494,23 +535,21 @@ function init(){
     ? `Any manufacturer part number gets live specs, stock and prices from authorised distributors. Descriptions are matched against a ${CATALOG.length}-part demo catalog (${CAP_VALUES.map(fmtCap).join(", ")}).`
     : `Demo catalog: ${CATALOG.length} parts, ${CAP_VALUES.map(fmtCap).join(", ")}.`;
   $("examples").innerHTML = EXAMPLES.map((ex, i) =>
-    `<li><button type="button" data-i="${i}">${esc(ex.label)}</button></li>`).join("");
+    `<li><button type="button" data-i="${i}"><span class="ex-label">${esc(ex.label)}${ex.live ? ` <span class="src-live">Live</span>` : ""}</span><span class="ex-desc">${esc(ex.desc)}</span></button></li>`).join("");
 
   $("search-form").addEventListener("submit", e => { e.preventDefault(); search($("q").value); });
   $("q").addEventListener("input", () => { if (!$("q-err").hidden) clearError(); });
   // Changing what you're looking for re-runs the last search in place.
   $("search-form").addEventListener("change", e => {
-    if (e.target.id === "cur") store.set(e.target.value);
-    if (e.target.id === "q" || e.target.closest(".fx") || !current) return;
+    if (e.target.id === "cur"){ store.set(e.target.value); renderCurHint(); }
+    if (e.target.id === "q" || e.target.id === "need-pick" || !current) return;
     render(current, {focusResults:false});
   });
+  wireNeedDate();
   $("examples").addEventListener("click", e => {
     const btn = e.target.closest("button[data-i]");
     if (!btn) return;
-    const ex = EXAMPLES[btn.dataset.i];
-    setOptions(ex);
-    $("q").value = ex.query;
-    search(ex.query);
+    runExample(EXAMPLES[btn.dataset.i]);
   });
 
   // A shared link like …#GRM188R71H104KA93D opens straight to that part.
@@ -525,12 +564,11 @@ function init(){
     }
   };
   addEventListener("hashchange", fromHash);
-  fromHash();
+  // ?scenario=1 opens a scenario directly, so a walkthrough can link to it.
+  const sc = Number(new URLSearchParams(location.search).get("scenario"));
+  if (sc >= 1 && sc <= EXAMPLES.length) runExample(EXAMPLES[sc - 1], {focusResults:false});
+  else fromHash();
 
-  // The converter is separate from the search: typing in it never submits the form.
-  $("fx-amt").addEventListener("input", renderConverter);
-  $("fx-from").addEventListener("change", renderConverter);
-  $("fx-amt").addEventListener("keydown", e => { if (e.key === "Enter") e.preventDefault(); });
   loadRates();
 }
 
