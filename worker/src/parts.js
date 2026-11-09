@@ -3,7 +3,7 @@
 // Units follow rules.js: cap in picofarads, v in volts, tol in percent (+80/−20 stored as 80), lead in weeks.
 // Anything that can't be parsed stays null: the page then says it's missing instead of guessing.
 
-import {fillFromMpn} from "./mpn.js";
+import {fillFromMpn} from "../../js/mpn.js";
 
 const CASES = ["01005", "0201", "0402", "0603", "0805", "1206", "1210", "1812", "2220"];
 

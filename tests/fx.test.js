@@ -1,6 +1,6 @@
 import {test, describe} from "node:test";
 import assert from "node:assert/strict";
-import {parseRates, convert, crossRates, CURRENCIES} from "../fx.js";
+import {parseRates, convert, crossRates, CURRENCIES} from "../js/fx.js";
 
 // A real Frankfurter answer, 2026-11-05.
 const SAMPLE = {amount: 1.0, base: "USD", date: "2026-11-05", rates: {EUR: 0.89095, MXN: 18.5905}};

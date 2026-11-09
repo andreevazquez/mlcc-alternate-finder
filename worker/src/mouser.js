@@ -88,4 +88,4 @@ export function normalizeMouserResponse(json, mpn = null){
 }
 
 // Pricing helpers are shared with the page.
-export {unitPriceAt, orderQuantity} from "../../rules.js";
+export {unitPriceAt, orderQuantity} from "../../js/rules.js";

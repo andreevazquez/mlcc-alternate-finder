@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   CATALOG, BY_PN, fmtCap, fmtTol, fmtWeek, isoWeek, meetsGrade, parseQuery, parseQty,
   evaluate, rank, approvalPath, supplyPlan, changeType, costPlan, CHECK_ROWS, liveSources, safeUrl
-} from "../rules.js";
+} from "../js/rules.js";
 
 const TODAY = new Date(2026, 10, 2); // Monday, ISO week 45
 

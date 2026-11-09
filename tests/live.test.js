@@ -6,7 +6,7 @@ import {
   parseGrade, fromNexar, fromMouser, alternatesQuery, median
 } from "../worker/src/parts.js";
 import worker, {lookUp} from "../worker/src/index.js";
-import {rank, bestOffer, priceLive, isCheckable} from "../rules.js";
+import {rank, bestOffer, priceLive, isCheckable} from "../js/rules.js";
 
 // Hand-written responses in the documented shapes, to test the parsing only.
 // Part numbers and values are invented and never shown on the page.

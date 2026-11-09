@@ -1,6 +1,6 @@
 import {test, describe} from "node:test";
 import assert from "node:assert/strict";
-import {decodeMpn, eiaCap, fillFromMpn} from "../worker/src/mpn.js";
+import {decodeMpn, eiaCap, fillFromMpn} from "../js/mpn.js";
 import {fromMouser} from "../worker/src/parts.js";
 
 const specs = d => d && [d.cap, d.v, d.pkg, d.diel, d.tol];
