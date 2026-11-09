@@ -522,6 +522,12 @@ function wireNeedDate(){
   });
 }
 
+function runExample(ex, {focusResults = true} = {}){
+  setOptions(ex);
+  $("q").value = ex.query;
+  search(ex.query, {demo: !!ex.demo, focusResults});
+}
+
 function init(){
   $("parts").innerHTML = CATALOG.map(p =>
     `<option value="${p.pn}">${esc(`${p.mfr} ${fmtCap(p.cap)} ${p.v} V ${p.pkg} ${p.diel}${p.grade === "automotive" ? " AEC-Q200" : ""}`)}</option>`).join("");
@@ -543,10 +549,7 @@ function init(){
   $("examples").addEventListener("click", e => {
     const btn = e.target.closest("button[data-i]");
     if (!btn) return;
-    const ex = EXAMPLES[btn.dataset.i];
-    setOptions(ex);
-    $("q").value = ex.query;
-    search(ex.query, {demo: !!ex.demo});
+    runExample(EXAMPLES[btn.dataset.i]);
   });
 
   // A shared link like …#GRM188R71H104KA93D opens straight to that part.
@@ -561,7 +564,10 @@ function init(){
     }
   };
   addEventListener("hashchange", fromHash);
-  fromHash();
+  // ?scenario=1 opens a scenario directly, so a walkthrough can link to it.
+  const sc = Number(new URLSearchParams(location.search).get("scenario"));
+  if (sc >= 1 && sc <= EXAMPLES.length) runExample(EXAMPLES[sc - 1], {focusResults:false});
+  else fromHash();
 
   loadRates();
 }
