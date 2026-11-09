@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MLCC Alternate Finder</title>
 <meta name="author" content="Ricardo Vázquez">
-<meta name="description" content="A supply-chain prototype by Ricardo Vázquez: screen MLCC alternates against engineering rules, supply timing and cost.">
-<title>Alternate finder for capacitors on allocation</title>
+<meta name="description" content="A supply-chain tool by Ricardo Vázquez: when a ceramic capacitor (MLCC) is on allocation, screen alternates against explicit substitution rules, flag what engineering must review, and compare supply timing and cost.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="theme-color" content="#EEF1F3" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#12181F" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f9f9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
 <!-- Link previews. LinkedIn needs absolute URLs for og:url and og:image. -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="MLCC Alternate Finder">
 <meta property="og:title" content="Your capacitor is on allocation. Find a drop-in alternate.">
-<meta property="og:description" content="Check ceramic capacitor alternates against real substitution rules, with the reason each one passes, needs review or fails.">
+<meta property="og:description" content="Check ceramic capacitor alternates against explicit substitution rules, with the reason each one passes, needs engineering review or fails.">
 <meta property="og:url" content="https://andreevazquez.github.io/mlcc-alternate-finder/">
 <meta property="og:image" content="https://andreevazquez.github.io/mlcc-alternate-finder/og-image.png">
 <meta property="og:image:width" content="1200">
@@ -22,39 +22,47 @@
 <meta property="og:image:alt" content="MLCC alternate finder: three candidate part numbers on a carrier tape, marked drop-in, needs review and not compatible.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Your capacitor is on allocation. Find a drop-in alternate.">
-<meta name="twitter:description" content="Check ceramic capacitor alternates against real substitution rules, with the reason each one passes, needs review or fails.">
+<meta name="twitter:description" content="Check ceramic capacitor alternates against explicit substitution rules, with the reason each one passes, needs engineering review or fails.">
 <meta name="twitter:image" content="https://andreevazquez.github.io/mlcc-alternate-finder/og-image.png">
 <meta name="twitter:image:alt" content="MLCC alternate finder: three candidate part numbers on a carrier tape, marked drop-in, needs review and not compatible.">
-<!-- Only this site, the live-data Worker and Cloudflare Web Analytics may load scripts or receive requests. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; connect-src 'self' https://mlcc-alternate-finder-api.ricardovazqueztovar.workers.dev https://api.frankfurter.dev https://cloudflareinsights.com; style-src 'self'; font-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'">
+<!-- Only this site, its own data Worker and Cloudflare Web Analytics may load scripts or receive requests. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; connect-src 'self' https://mlcc-alternate-finder-api.ricardovazqueztovar.workers.dev https://cloudflareinsights.com; style-src 'self'; font-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<link rel="preload" href="fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="css/styles.css?v=3">
-<script type="module" src="js/app.js?v=3"></script>
+<link rel="stylesheet" href="css/styles.css?v=4">
+<link rel="modulepreload" href="js/rules.js?v=4">
+<link rel="modulepreload" href="js/mpn.js">
+<script type="module" src="js/app.js?v=4"></script>
 </head>
 <body>
-<main>
-  <header>
-    <p class="eyebrow">Ricardo Vázquez <span class="eyebrow-role">· Supply chain, from the plant floor to the system rollout</span></p>
-    <h1>Your capacitor is on allocation. Find a drop-in alternate.</h1>
-    <p class="lede">I built this from hands-on component planning and purchasing in automotive electronics. Enter a BOM line or part number to screen MLCC alternatives, see what needs engineering review, and compare supply timing and cost.</p>
-    <p class="maker-line">A practical supply-chain tool, built from a real manufacturing problem. <a href="https://linkedin.com/in/ricardovazquez88" target="_blank" rel="noopener noreferrer">Connect with me on LinkedIn<span class="sr-only"> (opens in a new tab)</span></a> <span aria-hidden="true">·</span> <a href="https://github.com/andreevazquez/mlcc-alternate-finder" target="_blank" rel="noopener noreferrer">Explore the source on GitHub<span class="sr-only"> (opens in a new tab)</span></a></p>
-    <section class="case-study" aria-label="Project case study">
-      <div><h2>Problem</h2><p>In electronics manufacturing, shortages turn alternate searches into manual spec, supply and approval checks.</p></div>
-      <div><h2>Approach</h2><p>Encode substitution rules, show why a part needs review, and combine supplier data with planning estimates.</p></div>
-      <div><h2>Outcome</h2><p>Compare candidate fit, review risk, supply timing and indicative cost in one workflow.</p></div>
-    </section>
-  </header>
+<header class="topbar">
+  <div class="brand">
+    <p class="maker">Ricardo Vázquez <span class="maker-role"><span class="sep" aria-hidden="true">· </span>Supply chain, from the plant floor to the system rollout</span> <span class="sep" aria-hidden="true">·</span>
+      <a href="https://www.linkedin.com/in/ricardovazquez88" target="_blank" rel="noopener noreferrer">LinkedIn<span class="sr-only"> (opens in a new tab)</span></a> <span aria-hidden="true">·</span>
+      <a href="https://github.com/andreevazquez/mlcc-alternate-finder" target="_blank" rel="noopener noreferrer">Source<span class="sr-only"> on GitHub (opens in a new tab)</span></a></p>
+    <h1>MLCC Alternate Finder</h1>
+    <p class="tagline">Your capacitor is on allocation. Screen alternates against explicit substitution rules, supply timing and cost.</p>
+  </div>
+</header>
 
-  <section aria-label="Search">
+<main>
+  <section class="start" aria-labelledby="ex-label">
+    <h2 id="ex-label" class="start-h">Try a scenario</h2>
+    <p class="hint start-hint">One click runs a full search: rules, engineering-review flags, approval path, supply date and cost.</p>
+    <ul class="examples" id="examples"></ul>
+  </section>
+
+  <section class="search-sec" aria-labelledby="search-h">
+    <h2 id="search-h" class="start-h">Or check your own part</h2>
     <form id="search-form" role="search" novalidate>
       <label for="q" class="field-label">Part number or BOM description</label>
       <div class="search">
-        <input id="q" name="q" type="search" list="parts" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
+        <input id="q" name="q" type="search" list="parts" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" maxlength="80"
           aria-describedby="q-hint privacy-hint q-err" placeholder="GRM188R71H104KA93D or 0.1uF 50V X7R 0603">
         <datalist id="parts"></datalist>
-        <button class="primary" type="submit">Find alternates</button>
+        <button class="primary" id="go" type="submit">Find alternates</button>
       </div>
+      <p class="hint" id="q-hint"></p>
+      <p class="error" id="q-err" role="alert" hidden></p>
       <div class="options">
         <fieldset>
           <legend class="field-label">Looking for</legend>
@@ -79,15 +87,21 @@
         <div class="options">
           <div>
             <label for="qty" class="sub-label">Quantity needed</label>
-            <input class="text-in" id="qty" name="qty" type="text" inputmode="decimal" autocomplete="off" placeholder="250k" aria-describedby="demand-hint qty-err">
+            <input class="text-in" id="qty" name="qty" type="text" inputmode="decimal" autocomplete="off" maxlength="20" placeholder="250k" aria-describedby="demand-hint qty-err">
           </div>
           <div>
             <label for="need" class="sub-label">Needed by</label>
-            <input class="text-in" id="need" name="need" type="date" aria-describedby="demand-hint">
+            <div class="date-field">
+              <input class="text-in" id="need" name="need" type="text" autocomplete="off" spellcheck="false" maxlength="24" placeholder="9 Dec 2026 or wk 50" aria-describedby="demand-hint need-err">
+              <span class="date-pick" title="Pick from a calendar">
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M7 2h2v2h6V2h2v2h3a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3V2Zm12 8H5v9h14v-9ZM5 8h14V6H5v2Z"/></svg>
+                <input type="date" id="need-pick" tabindex="-1" aria-label="Pick the need date from a calendar">
+              </span>
+            </div>
           </div>
           <div>
             <label for="cur" class="sub-label">Show prices in</label>
-            <select id="cur" name="cur" aria-describedby="fx-status">
+            <select id="cur" name="cur" aria-describedby="cur-hint">
               <option value="USD">USD, US dollar</option>
               <option value="MXN" disabled>MXN, Mexican peso</option>
               <option value="EUR" disabled>EUR, euro</option>
@@ -95,33 +109,24 @@
           </div>
         </div>
         <p class="hint" id="demand-hint">Adds stock coverage, approval time, an on-time check and total cost to every candidate.</p>
-        <section class="fx" aria-labelledby="fx-h">
-          <h2 class="fx-h" id="fx-h">Exchange rates <span class="opt">(for information)</span></h2>
-          <p class="fx-status" id="fx-status" aria-live="polite">Loading today’s rates…</p>
-          <ul class="fx-rates" id="fx-rates" hidden></ul>
-          <div class="fx-conv" id="fx-conv" hidden>
-            <label for="fx-amt" class="sub-label">Convert</label>
-            <div class="fx-row">
-              <input class="text-in" id="fx-amt" type="text" inputmode="decimal" autocomplete="off" value="1000" aria-describedby="fx-out">
-              <select id="fx-from" aria-label="Currency to convert from">
-                <option value="USD">USD</option><option value="MXN">MXN</option><option value="EUR">EUR</option>
-              </select>
-            </div>
-            <output class="fx-out" id="fx-out" for="fx-amt fx-from"></output>
-          </div>
-        </section>
+        <p class="hint" id="cur-hint" aria-live="polite"></p>
         <p class="error" id="qty-err" role="alert" hidden></p>
+        <p class="error" id="need-err" role="alert" hidden></p>
       </fieldset>
-      <p class="hint" id="q-hint"></p>
-      <p class="hint" id="privacy-hint">Part-number lookups are sent to Nexar or Mouser. Cloudflare processes requests to the Worker; provider and Cloudflare privacy policies apply.</p>
-      <p class="error" id="q-err" role="alert" hidden></p>
+      <p class="hint" id="privacy-hint">Privacy: part-number lookups go to this site’s Cloudflare Worker, which asks Nexar or Mouser. Descriptions, quantities and dates never leave your browser.</p>
     </form>
-    <p class="examples-label" id="ex-label">Try a scenario with demo data:</p>
-    <ul class="examples" id="examples" aria-labelledby="ex-label"></ul>
   </section>
 
+  <div class="loading" id="loading" hidden aria-hidden="true">
+    <div class="sk sk-line sk-short"></div>
+    <div class="sk sk-card"></div>
+    <div class="sk sk-line"></div>
+    <div class="sk sk-pocket"></div>
+    <div class="sk sk-pocket"></div>
+  </div>
+
   <div id="results" hidden>
-    <p class="safety-note" role="note"><strong>Screening aid only — not an engineering approval.</strong> Verify every candidate’s current datasheet, lifecycle, electrical and mechanical fit, qualification, and supplier availability. Do not use this result alone to approve a production substitution.</p>
+    <p class="safety-note" role="note"><strong>Screening aid only, not an engineering approval.</strong> Verify every candidate’s current datasheet, lifecycle, electrical and mechanical fit, qualification, and supplier availability before approving a production substitution.</p>
     <p class="source-note" id="source-note" hidden></p>
     <section aria-labelledby="orig-h">
       <h2 id="orig-h">Part you need to replace</h2>
@@ -141,19 +146,30 @@
 
   <p class="sr-only" id="status" aria-live="polite"></p>
 
-  <footer>
-    <details class="methodology">
-      <summary>How it works, data sources and assumptions</summary>
-      <div class="methodology-copy">
-        <p><b>Substitution rules.</b> Capacitance and case size must match. Voltage rating can only go up. Dielectric can only go up (Y5V, X5R, X7R, C0G). Tolerance can only get tighter. Grades aren’t a ladder: AEC-Q200 can replace commercial, but not medical. Changed or missing specifications need engineering review; end-of-life parts are ruled out.</p>
-        <p><b>Comparison and planning.</b> Each candidate is compared against the original. The approval path and production date are estimates based on typical review, validation, AML and PPAP durations. Actual requirements vary by company and customer.</p>
-        <p><b>Data.</b> MPN lookup uses Nexar with Mouser as fallback. Missing provider fields remain unknown. Description searches use a 30-part demo catalog with simulated stock, lead times and prices. Confirm specifications against the current manufacturer datasheet before approving any substitution.</p>
-      </div>
-    </details>
-    <p class="author-bio">Built by Ricardo Vázquez. I have worked supply chain from the plant floor to the system rollout: component planning and purchasing in automotive electronics, and Kinaxis Maestro implementations in pharma, food and aerospace. <a href="https://linkedin.com/in/ricardovazquez88" target="_blank" rel="noopener noreferrer">Connect on LinkedIn<span class="sr-only"> (opens in a new tab)</span></a> · <a href="https://github.com/andreevazquez/mlcc-alternate-finder" target="_blank" rel="noopener noreferrer">Project source on GitHub<span class="sr-only"> (opens in a new tab)</span></a>.</p>
-    <p class="next-project">Stop firefighting shortages. Size the inventory policy that prevents them <span aria-hidden="true">→</span> <a href="https://andreevazquez.github.io/pull-program-fit-analyzer/" target="_blank" rel="noopener noreferrer">Pull Program Fit Analyzer<span class="sr-only"> (opens in a new tab)</span></a></p>
-  </footer>
+  <details class="methodology">
+    <summary>How it works, data sources and assumptions</summary>
+    <div class="methodology-copy">
+      <p><b>Substitution rules.</b> Capacitance and case size must match. Rated voltage can only go up. Dielectric can only go up (Y5V, X5R, X7R, C0G), and the operating temperature range can’t shrink. Tolerance can only get tighter. Grades aren’t a ladder: AEC-Q200 can replace commercial, but nothing replaces medical except a medical-grade series. End-of-life parts are ruled out. A changed or missing spec sends the part to engineering review.</p>
+      <p><b>Engineering-review flags.</b> Some risks aren’t a pass or fail on the datasheet, so each candidate lists them for the engineer, with no calculation: <b>DC bias</b> on X5R, X7R and Y5V parts that aren’t the same design as the original (class II ceramics lose capacitance under DC voltage, and the curve differs by manufacturer, rated voltage and height); <b>height</b> when the same case size comes in a different thickness, or the thickness isn’t known and the voltage rating changes; and <b>termination</b> on automotive boards, where flexible (soft) termination protects against board-flex cracking. Losing flexible termination on an automotive part fails the check outright. Flags never rule a part out; among otherwise equal parts, fewer flags rank first.</p>
+      <p><b>Approval and supply.</b> The approval path and production date are estimates from typical engineering review, sample validation, AML and PPAP durations; real requirements vary by company and customer. Supply is from stock when it covers the quantity, otherwise the factory lead time; you order while approval runs.</p>
+      <p><b>Data.</b> A part number gets live specs, stock and prices from Octopart (Nexar), with Mouser as fallback. When a listing leaves a spec out, it is read from the part number (Murata, Samsung, TDK, KEMET, Yageo and KYOCERA AVX formats); height and termination always come from the part number. If live data doesn’t answer within 5 seconds, the page falls back to a 31-part demo catalog with simulated stock, lead times and prices, and says so. Prices are in USD; MXN and EUR use the European Central Bank reference rate, for information only.</p>
+      <p>The full rule set, with the file and function behind each rule, is in the <a href="https://github.com/andreevazquez/mlcc-alternate-finder/blob/main/docs/METHODOLOGY.md" target="_blank" rel="noopener noreferrer">methodology<span class="sr-only"> (opens in a new tab)</span></a>.</p>
+    </div>
+  </details>
 </main>
-<!-- Cloudflare Web Analytics: anonymous page-view counts, no cookies. It never sees uploaded files or results. --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "2a342b9bf8874b93b2075fd289181a4a"}'></script><!-- End Cloudflare Web Analytics -->
+
+<footer class="footer">
+  <section class="case-study" aria-label="Project case study">
+    <div><h2>Problem</h2><p>When a capacitor goes on allocation, finding an alternate means manual spec checks, supplier calls and an approval path nobody has sized, while the line waits.</p></div>
+    <div><h2>Approach</h2><p>Encode the substitution rules, flag what engineering must review, and combine live distributor data with an approval and supply plan for each candidate.</p></div>
+    <div><h2>Outcome</h2><p>A ranked shortlist with the reason each part passes, needs review or fails, when it can be in production, and what it costs against the original.</p></div>
+  </section>
+  <p class="author-bio">Built by <b>Ricardo Vázquez</b>. I have worked supply chain from the plant floor to the system rollout: component planning and purchasing in automotive electronics, and Kinaxis Maestro implementations in pharma, food and aerospace.
+    <a href="https://www.linkedin.com/in/ricardovazquez88" target="_blank" rel="noopener noreferrer">Connect on LinkedIn<span class="sr-only"> (opens in a new tab)</span></a> <span aria-hidden="true">·</span>
+    <a href="https://github.com/andreevazquez/mlcc-alternate-finder" target="_blank" rel="noopener noreferrer">Project source on GitHub<span class="sr-only"> (opens in a new tab)</span></a>
+    <span aria-hidden="true">·</span> Stop firefighting shortages: <a href="https://andreevazquez.github.io/pull-program-fit-analyzer/" target="_blank" rel="noopener noreferrer">size the inventory policy that prevents them with Pull Program Fit Analyzer<span class="sr-only"> (opens in a new tab)</span></a></p>
+  <p class="fineprint">Demo catalog stock, lead times and prices are simulated. Live data comes from authorised distributors through Nexar and Mouser. Anonymous visit counts via Cloudflare Web Analytics, no cookies.</p>
+</footer>
+<!-- Cloudflare Web Analytics: anonymous page-view counts, no cookies. It never sees searches or results. --><script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "2a342b9bf8874b93b2075fd289181a4a"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
