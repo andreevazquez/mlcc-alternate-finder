@@ -1,171 +1,153 @@
 # MLCC Alternate Finder
 
-Your capacitor is on allocation. Find a drop-in alternate.
+**Live demo: [andreevazquez.github.io/mlcc-alternate-finder](https://andreevazquez.github.io/mlcc-alternate-finder/)**
 
-A single-page tool that finds alternates for a multilayer ceramic capacitor (MLCC) that is out of stock or on long lead time. Enter a part number or a raw BOM line such as `CAP CER 10UF 10V X5R 0805`, and the page checks every part in its catalog against the substitution rules a planner and a component engineer apply before approving a substitute. Each candidate is marked **Drop-in**, **Fits, needs review**, or **Not compatible**, with the reason for every check.
+Your capacitor is on allocation. This tool screens alternates against explicit substitution rules, then shows what engineering must review, when each part can be in production, and what it costs.
 
-**This is a screening aid, not an engineering approval.** Verify each candidate against its current manufacturer datasheet, lifecycle status, qualification, mechanical/electrical requirements, and supplier availability before approving a production substitution. Live-data timestamps indicate when this service fetched a response; they do not necessarily indicate when each distributor updated its listing.
+[![A 0.1 µF Murata part with 22 weeks of lead time: the original's specs, then candidates ranked with a color-coded datasheet comparison](docs/img/hero.jpg)](https://andreevazquez.github.io/mlcc-alternate-finder/?scenario=1)
 
-- **Live demo:** <https://andreevazquez.github.io/mlcc-alternate-finder/>
-- **Deep link example:** <https://andreevazquez.github.io/mlcc-alternate-finder/#GRM188R71H104KA93D> opens with that part loaded.
+> **Screening aid, not an engineering approval.** Verify every candidate's current datasheet, lifecycle, qualification, fit and availability before approving a production substitution.
 
-## What you can enter
+## What it does
 
-- **Part number:** an exact match, or a unique prefix of at least 8 characters. An ambiguous prefix asks you to pick; an unknown one suggests describing the part instead.
-- **BOM description:** free text. The page reads capacitance (`100p`, `100n`, `0.1uF`, `10UF`), voltage (`50V`), case size (`0201`–`1210`), dielectric (`C0G`/`NP0`, `X7R`, `X5R`, `Y5V`), tolerance (`10%`) and grade keywords (`AEC-Q200`, `automotive`, `medical`).
+**Problem.** When a multilayer ceramic capacitor (MLCC) goes on allocation in an EMS or automotive-electronics plant, finding an alternate is manual and slow:
+- A planner searches distributors.
+- An engineer checks specs one by one.
+- Nobody sizes the approval path until the line is already waiting.
 
-Options that shape the search:
+**Approach.** Enter a manufacturer part number or a raw BOM line (`CAP CER 10UF 10V X5R 0805`). The finder works in four steps:
+- **Live data.** It pulls the specs, stock and offers from authorised distributors.
+- **Rules.** It checks every candidate against the substitution rules a component engineer applies: capacitance, case, voltage, dielectric, temperature, tolerance, grade, termination and lifecycle.
+- **Review flags.** It flags what still needs an engineer: DC bias, height and termination.
+- **Plan.** It builds an approval path and a supply date for each candidate.
 
-- **Looking for:** *Equivalent* or *Better than original*.
-- **Grade required:** *Same as the original*, *Commercial*, *Automotive (AEC-Q200)* or *Medical*.
-- **Demand and cost (optional):** quantity needed (`250000`, `250,000` or `250k`), and the date you need it by.
-- **Show prices in:** USD, MXN or EUR. See *Exchange rates* below.
+**Outcome.** A ranked shortlist with:
+- The reason each part passes, needs review or fails.
+- The type of change: drop-in, minor or major.
+- The date it can be in production, on time or weeks late against your need date.
+- The cost against the original, compared with simply waiting for the original part.
 
-## Substitution rules
+## Scenario walkthrough
 
-| Spec | Rule |
-| --- | --- |
-| Capacitance | Must match. |
-| Case size | Must match: a different case won’t fit the footprint. |
-| Voltage rating | Can only go up. Going up passes but is flagged for review: a higher rating can mean a taller part. |
-| Dielectric | Can only go up: Y5V < X5R < X7R < C0G. An upgrade is flagged for engineering confirmation. |
-| Tolerance | Can only get tighter. |
-| Grade | Not a ladder. AEC-Q200 satisfies commercial. Only a manufacturer’s medical-grade series satisfies medical; automotive never does. |
-| Missing fields | Anything a description leaves out is flagged for review, never silently passed. |
-| Lifecycle | End of life is ruled out; not recommended for new designs (NRND) needs review. Until a part’s status is verified, it shows as a note to check. |
-| Manufacturer | A new manufacturer is an information note (it needs an entry on the approved manufacturer list, AML); it doesn’t change the verdict. |
+Each link opens the live page with the scenario already run. The same scenarios are one click away at the top of the page.
 
-## Datasheet comparison
+1. **[0.1 µF on allocation](https://andreevazquez.github.io/mlcc-alternate-finder/?scenario=1).** You need 250k of a Murata `GRM188R71H104KA93D` in 4 weeks, and it has no stock and 26 weeks of lead time.
+   - Waiting means 22 weeks late.
+   - The finder shows 4 alternates usable in time: 2 drop-ins from Murata's own range, 6 minor changes from other manufacturers, and 1 major change.
+   - A Yageo, a Samsung and a TDK part come out on top. Each carries a DC-bias flag, because a different manufacturer means a different DC-bias curve.
+2. **[Automotive line](https://andreevazquez.github.io/mlcc-alternate-finder/?scenario=2).** The same value, AEC-Q200, 50k in 12 weeks.
+   - Every commercial part is ruled out.
+   - Every remaining change is major, because an automotive customer must approve it (PPAP).
+   - Each candidate is flagged for termination. The flag asks whether this location on the board needs flexible termination.
+3. **[Upgrade a BOM line](https://andreevazquez.github.io/mlcc-alternate-finder/?scenario=3).** A 10 µF X5R part from a BOM description, in *Better than original* mode.
+   - Only parts that improve something and give nothing up are kept: three parts with a higher voltage rating, one of them also X7R.
+4. **[Medical device](https://andreevazquez.github.io/mlcc-alternate-finder/?scenario=4).** 100 pF C0G for a medical design.
+   - Nothing qualifies.
+   - The page explains why: AEC-Q200 doesn't replace a medical-grade series.
+5. **[Live part number](https://andreevazquez.github.io/mlcc-alternate-finder/?scenario=5).** The same end-of-life Murata part with live data.
+   - You get Mouser's offers (stock, MOQ, packaging and price breaks) and the replacement Mouser recommends.
+   - The alternates come from Mouser's catalog, checked against the same rules.
 
-The top three candidates appear side by side with the original, and every candidate card uses the same colors:
+Any other part number works too. A deep link such as [`#GRM188R71H104KA93D`](https://andreevazquez.github.io/mlcc-alternate-finder/#GRM188R71H104KA93D) opens with that part loaded.
 
-| Color | Meaning | Examples |
-| --- | --- | --- |
-| Green ✓ | Same as the original | Same capacitance, case, voltage, dielectric, manufacturer |
-| Yellow ≈ | Differs, without affecting the design | Tighter tolerance, AEC-Q200 where commercial is required, wider temperature range, new manufacturer, lifecycle not yet verified |
-| Red ! | Needs a product engineer | Higher voltage rating (taller part), different dielectric, a spec the description left out, NRND |
+## How it decides
 
-Each candidate also gets a **type of change**, from the steps it needs:
+The full rule set, with the file and function behind each rule, is in **[docs/METHODOLOGY.md](docs/METHODOLOGY.md)**.
 
-- **Drop-in:** same manufacturer and fit; only an AML entry.
-- **Minor change:** new manufacturer; samples and an AML entry, no design change.
-- **Major change:** a product engineer must review it or, for an automotive design, it needs PPAP and customer approval.
+**Substitution rules.**
+- Capacitance and case size must match.
+- Rated voltage can only go up, and dielectric can only go up (Y5V < X5R < X7R < C0G).
+- The operating temperature range can't shrink, and tolerance can only get tighter.
+- Grades aren't a ladder: AEC-Q200 replaces commercial, but nothing replaces medical except a medical-grade series.
+- End-of-life parts are ruled out.
+- A changed or missing spec sends the part to engineering review.
 
-Below the specs, the table shows type of change, lead time, stock, the date each part is usable in production, the simulated unit price and, with a quantity, the total cost and the difference against the original, in the currency you pick, with the USD figure under it.
+**Engineering-review flags.** These risks aren't a datasheet pass or fail, so they're listed for the engineer, with no calculation:
+- **DC bias** on X5R, X7R and Y5V parts that aren't the same design as the original.
+- **Height** when the same case comes in a different thickness.
+- **Termination** on automotive boards: losing flexible termination fails the check outright.
 
-## Planning: when can each alternate go into production?
+Flags never rule a part out; among equal parts, fewer flags rank first.
 
-An alternate is only useful once it’s both **approved** and **in hand**. For every candidate the page shows:
+**Approval and supply.**
+- **Approval path.** Each candidate gets one, with typical durations: engineering review 2 weeks, new-manufacturer samples 3, PPAP 6, AML entry 1.
+- **Usable in production.** The later of supply and approval, assuming you order while approval runs.
 
-- **Supply:** immediate if distribution stock covers the quantity needed (or, with no quantity, if there is any stock); otherwise the factory lead time. With a quantity, it shows how much of it stock covers.
-- **Approval path:** the steps the change needs, with typical durations:
+## How lookups work
 
-  | Step | When | Weeks |
-  | --- | --- | --- |
-  | Engineering review | The candidate is marked “needs review” | 2 |
-  | Samples and build validation | New manufacturer (or unknown, for a description search) | 3 |
-  | PPAP and customer approval | The design is automotive | 6 |
-  | AML and ERP item master entry | Always | 1 |
-
-- **Usable in production:** the later of supply and approval, assuming you order while approval runs. With a need date, each candidate is marked on time or weeks late.
-- **The cost of waiting:** for a part-number search with a need date, the original part’s own date, so every alternate is compared against simply waiting.
-
-Durations are assumptions that vary by company and customer; they live in `APPROVAL_STEPS` in `rules.js`.
-
-## Ranking
-
-- *Equivalent:* with a need date, parts usable on time come first. Then the smallest type of change (drop-in, minor, major), then fit, then soonest usable, then shortest lead time and most stock.
-- *Better than original:* only candidates that improve at least one spec or the grade while giving nothing up, sorted by number of improvements, then the same order as above. Each shows what it’s better on.
-
-## About the data
-
-- The catalog holds **30 MLCCs** (100 pF, 0.1 µF, 1 µF and 10 µF) from Murata, TDK, Samsung, Yageo, KEMET and KYOCERA AVX, in commercial and AEC-Q200 grades.
-- **Specs follow each manufacturer’s part-numbering scheme but have not all been verified against datasheets.** [DATA_CHECK.md](DATA_CHECK.md) tracks that verification. Always confirm against the datasheet before approving a substitute.
-- **Stock, lead times and prices are simulated.** Prices are illustrative unit prices at reel quantity, in USD.
-- **Live data is one click away.** Every part links to its search page on TrustedParts, Octopart, Findchips, Digi-Key and Mouser, which show live price, stock and MOQ. The page links to them; it doesn’t copy their data.
-- **Lifecycle status (active, NRND, EOL) isn’t verified for any part yet.** It’s a column in DATA_CHECK.md; once filled in, add it to the part in `rules.js` as `life:"Active"`, `"NRND"` or `"EOL"`.
-- **There are no medical-grade parts, on purpose.** Inventing part numbers would be worse than leaving them out. A medical search explains what’s required instead: the manufacturer’s medical-grade series and, for life-support or implantable use, the manufacturer’s written approval.
-
-## Exchange rates
-
-Prices are quoted in USD. On each visit the page loads the European Central Bank reference rates for USD, MXN and EUR from [Frankfurter](https://frankfurter.dev) (free, no key, CORS enabled). The ECB publishes them once per working day around 16:00 CET, so they are informational: not a bank, customs (DOF) or Banxico FIX rate.
-
-- A panel shows 1 USD and 1 EUR in the other two currencies, the rate date, and a converter for any amount.
-- **Show prices in** converts every price and cost on the page to MXN or EUR; the USD figure stays next to it. The choice is remembered in that browser.
-- If the rates can’t be loaded, MXN and EUR are disabled, prices stay in USD and the panel says so. A rate is never guessed or kept from an earlier visit.
-- The logic is in `fx.js` (tested by `tests/fx.test.js`).
-
-## Live data
-
-A Cloudflare Worker in `worker/` serves live manufacturer-part-number lookups through authorised distributor APIs. The page stays static and calls the Worker; API keys remain in Worker secrets.
-
-- **Sources:** Nexar first; Mouser Search API is the fallback. The Worker distinguishes monthly quota exhaustion, Nexar plan-result limits and temporary rate limiting rather than showing them all as the same error. Official APIs only, no scraping.
-- **Public endpoint:** `worker/wrangler.toml` defines a best-effort per-IP limit of 30 requests per 60 seconds (effective after this config is deployed). Cloudflare enforces these limits approximately per location, not as a strict global provider-quota cap; mobile networks/NAT can also share IPs. Use a Durable Object-backed limiter for strict provider-quota enforcement, monitor provider usage, and confirm `namespace_id` is unique in your Cloudflare account before deployment.
-- **What the page shows:** a table of distributor offers (stock, MOQ and order multiple, lead time, packaging, price), the source and when this service retrieved the response. That timestamp is not necessarily the distributor’s last-update time. Alternates are checked against the same rules as the demo.
-- **Price:** for the quantity you need, rounded up to the MOQ and order multiple, at the distributor whose stock covers it for the least total spend.
-- **Missing data stays missing.** No stock, lead time or price is guessed: the page says “Not listed”, and a part without voltage, case or a supported dielectric isn’t ranked. If the Worker can’t answer, the page says why and uses the demo catalog.
-- **Descriptions** (`0.1uF 50V X7R 0603`) still search the demo catalog.
-
-The Worker runs at <https://mlcc-alternate-finder-api.ricardovazqueztovar.workers.dev> (`API_URL` in `app.js`). With `API_URL` empty, the page uses only the demo catalog. Cloudflare Workers Builds deploys `worker/` on every push to `main`.
-
-### Deploy the Worker
-
-Set three secrets on the Worker (Cloudflare dashboard → Workers & Pages → `mlcc-alternate-finder-api` → Settings → Variables and Secrets, or `npx wrangler secret put NAME` in `worker/`): `NEXAR_CLIENT_ID`, `NEXAR_CLIENT_SECRET` (a Nexar app with the Supply scope) and `MOUSER_API_KEY` (the Search API key). `ALLOWED_ORIGIN` in `worker/wrangler.toml` lists the sites allowed to call it.
-
-```sh
-cd worker && npx wrangler deploy
+```
+Browser ──► Cloudflare Worker (keys in Worker secrets) ──► Nexar (Octopart) ──► Mouser (fallback)
+   │                 │ 30-minute cache, 4 s timeout per provider, 30 requests/min per IP
+   └─ 5 s timeout ──►  demo catalog fallback
 ```
 
-Then check `https://<worker>/part?mpn=GRM188R71H104KA93D` and put the Worker’s URL in `API_URL`.
+- **Source order.** A part number goes to the Worker in `worker/`, which asks Nexar first and Mouser if Nexar fails or its quota is used up. Official APIs only, no scraping.
+- **Specs a listing leaves out** are read from the part number. Murata, Samsung, TDK, KEMET, Yageo and KYOCERA AVX formats are covered. Height and termination always come from the part number.
+- **Fallback.** If live data doesn't answer within 5 seconds, the page falls back to a 31-part demo catalog:
+  - A part in the catalog is used as it is.
+  - Otherwise, the specs read from its part number are matched against the catalog.
+  - Either way, the page says so, and the demo stock, lead times and prices are labelled as simulated.
+- **Missing data stays missing.** Nothing is guessed.
+- **Descriptions** (`0.1uF 50V X7R 0603`) are matched against the demo catalog.
+- **Exchange rates.** Prices are in USD. MXN and EUR use the European Central Bank reference rate, which the Worker serves from `GET /fx`, cached for 6 hours. They're for information only.
 
-## Run it locally
+## Privacy
 
-No build step and no dependencies. The JavaScript loads as ES modules, which browsers won’t run from `file://`, so serve the folder:
-
-```sh
-npm start              # same as: python3 -m http.server 8000
-```
-
-Then open <http://localhost:8000>. Any static file server works.
-
-## Run the tests
-
-Requires Node 18 or later. Uses the built-in `node:test` runner; nothing to install.
-
-```sh
-npm test
-```
+- **What leaves the browser.** Only the part number you look up, sent to this site's Cloudflare Worker, which forwards it to Nexar or Mouser.
+- **What stays in the browser.** Descriptions, quantities, need dates and results.
+- **Analytics.** Cloudflare Web Analytics counts anonymous page views, with no cookies.
+- **Stored on your device.** Only the currency you picked, in `localStorage`.
 
 ## Security
 
-- A Content-Security-Policy `<meta>` in `index.html` allows scripts only from this site and Cloudflare Web Analytics, and requests only to this site, the Worker, Frankfurter (exchange rates) and the analytics endpoint. If `API_URL` changes, update `connect-src` too.
-- Links that come from distributor APIs (datasheets, offer pages) are rendered only when they are `http(s)` URLs (`safeUrl` in `rules.js`).
-- A malformed deep link (for example `#%`) is ignored instead of stopping the page.
+- **No secrets in the client or the repository.** API keys live only in Worker secrets. The full git history was scanned for keys, tokens and `.env` files, and none were found.
+- **Content Security Policy on the page.** Scripts may load only from this site and Cloudflare Web Analytics. Requests may go only to this site, the Worker and the analytics endpoint. There are no third-party fonts and no inline scripts.
+- **Worker.**
+  - CORS: only the site's own origin gets a CORS header.
+  - Rate limit: 30 requests per minute per IP, through Cloudflare's rate-limiting binding. It fails closed if the binding is missing.
+  - Input: one part number of at most 60 characters from a fixed character set; extra parameters, other methods and long URLs are rejected.
+  - Headers on every response: `Content-Security-Policy: default-src 'none'`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and HSTS.
+- **Distributor links** are rendered only when they are `http(s)` URLs (`safeUrl()`).
+- **Dependencies.** None at runtime. CI runs `npm audit --audit-level=high`.
+
+## Run locally
+
+No build step and no dependencies. ES modules don't run from `file://`, so serve the folder:
+
+```sh
+npm start        # python3 -m http.server 8000
+npm test         # node:test, Node 18+
+```
+
+From `localhost`, the Worker refuses the request (CORS), so the page shows the offline fallback. To test live data locally, add `http://localhost:8000` to `ALLOWED_ORIGIN` in `worker/wrangler.toml`.
+
+### Deploy
+
+- **Site.** GitHub Pages serves `main`. Run `npm run release` before a deploy; it runs the tests and bumps the `?v=N` cache-busting suffix.
+- **Worker.** Cloudflare Workers Builds deploys `worker/` on every push to `main`. It needs three Worker secrets: `NEXAR_CLIENT_ID`, `NEXAR_CLIENT_SECRET` and `MOUSER_API_KEY`.
 
 ## Project layout
 
-| File | Contents |
-| --- | --- |
-| `index.html` | Markup and link-preview meta tags |
-| `styles.css` | Styles, light and dark mode |
-| `rules.js` | Catalog, parsing, rules, ranking and formatting. Pure logic, no DOM |
-| `app.js` | Rendering and event wiring |
-| `fx.js` | Exchange-rate parsing and conversion (USD, MXN, EUR). Pure logic |
-| `tests/rules.test.js` | Tests for `rules.js` |
-| `worker/src/index.js` | Cloudflare Worker: `GET /part?mpn=…`, source order and caching |
-| `worker/src/nexar.js`, `worker/src/mouser.js` | Nexar and Mouser requests and response parsing |
-| `worker/src/parts.js` | Maps distributor data to the part shape `rules.js` checks |
-| `tests/live.test.js`, `tests/mouser.test.js` | Tests for the Worker, against hand-written fixtures |
-| `fonts/` | Self-hosted Barlow, Barlow Semi Condensed and JetBrains Mono (latin subset, SIL OFL), so the page makes no Google Fonts request |
-| `scripts/release.mjs` | `npm run release`: runs the tests, then bumps `?v=N` on `styles.css`, `app.js` and the `rules.js` import. Run it before each deploy |
-| `.github/workflows/test.yml` | Runs `npm test` on every push and pull request |
-| `scripts/make-og-image.mjs` | Regenerates `og-image.png` and `apple-touch-icon.png` (needs Playwright: `npm i --no-save playwright && npx playwright install chromium`, then `npm run og-image`) |
-| `DATA_CHECK.md` | Datasheet verification checklist for the catalog |
-| `ROADMAP.md` | Current scope, limitations and prioritized next improvements |
+| Path | Contents |
+|---|---|
+| `index.html`, `css/styles.css` | Page and styles, light and dark |
+| `js/rules.js` | Catalog, substitution rules, review flags, approval, supply, cost, ranking. Pure logic |
+| `js/mpn.js` | Specs from Murata, Samsung, TDK, KEMET, Yageo and KYOCERA AVX part numbers. Shared with the Worker |
+| `js/app.js` | Rendering and wiring |
+| `js/fx.js` | Exchange-rate validation, shared with the Worker |
+| `worker/` | Cloudflare Worker: `GET /part`, `GET /fx`, Nexar and Mouser adapters |
+| `tests/` | `node:test` suites: rule edges, catalog, part-number decoding, Worker and providers |
+| `docs/METHODOLOGY.md` | Every rule, with its file and function |
+| `docs/DATA_CHECK.md` | Datasheet verification checklist for the demo catalog |
+| `docs/ROADMAP.md` | Scope, limitations and next steps |
+| `scripts/` | Release and link-preview image scripts |
 
 ## Author
 
-Built by Ricardo Vázquez, who has worked supply chain from the plant floor to the system rollout: electronic-component planning and purchasing in automotive electronics manufacturing, and Kinaxis Maestro planning implementations for pharma, food and aerospace companies.
+Built by **Ricardo Vázquez**. I have worked supply chain from the plant floor to the system rollout: component planning and purchasing in automotive electronics, and Kinaxis Maestro implementations in pharma, food and aerospace.
+
+- [Connect on LinkedIn](https://www.linkedin.com/in/ricardovazquez88)
+- Also in this portfolio: **[Pull Program Fit Analyzer](https://andreevazquez.github.io/pull-program-fit-analyzer/)**, which decides which parts belong in VMI, CRP, Kanban or MRP, so fewer of them end up on allocation in the first place.
 
 ## License
 

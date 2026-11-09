@@ -6,9 +6,9 @@ How to use this list:
 
 1. Open the manufacturer’s datasheet or product page for the part number.
 2. Compare every spec in the row and note the lifecycle status the manufacturer shows (Active, NRND or EOL). If all specs match, set **Verified** to **Y** and paste the datasheet URL.
-3. If anything differs, leave **Verified** at **N**, note the difference and the source, and correct `rules.js` (and the tests, if affected) only from that source.
+3. If anything differs, leave **Verified** at **N**, note the difference and the source, and correct `js/rules.js` (and the tests, if affected) only from that source.
 
-Stock and lead times are simulated and aren’t listed here. Grade means the part is in an AEC-Q200 automotive series (Automotive) or not (Commercial).
+Stock and lead times are simulated and aren’t listed here. Grade means the part is in an AEC-Q200 automotive series (Automotive) or not (Commercial). Height and termination are read from the part number (`js/mpn.js`) and should be checked here too.
 
 | # | Part number | Manufacturer | Capacitance | Voltage | Case | Dielectric | Tolerance | Grade | Lifecycle (Active/NRND/EOL) | Verified (Y/N) | Datasheet URL |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -42,3 +42,4 @@ Stock and lead times are simulated and aren’t listed here. Grade means the par
 | 28 | `CC0603JRNPO9BN101` | Yageo | 100 pF | 50 V | 0603 | C0G | ±5% | Commercial | | N | |
 | 29 | `GCM1885C1H101JA16D` | Murata | 100 pF | 50 V | 0603 | C0G | ±5% | Automotive (AEC-Q200) | | N | |
 | 30 | `CL10B101KB8NNNC` | Samsung | 100 pF | 50 V | 0603 | X7R | ±10% | Commercial | | N | |
+| 31 | `GCJ188R71H104KA12D` | Murata | 0.1 µF | 50 V | 0603 | X7R | ±10% | Automotive (soft termination) | | N | |
