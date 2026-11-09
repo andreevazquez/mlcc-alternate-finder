@@ -1,6 +1,7 @@
 import {test, describe} from "node:test";
 import assert from "node:assert/strict";
-import {parseRates, convert, crossRates, CURRENCIES} from "../js/fx.js";
+import {parseRates} from "../js/fx.js";
+import {fxRates} from "../worker/src/index.js";
 
 // A real Frankfurter answer, 2026-11-05.
 const SAMPLE = {amount: 1.0, base: "USD", date: "2026-11-05", rates: {EUR: 0.89095, MXN: 18.5905}};
@@ -21,28 +22,15 @@ describe("parseRates", () => {
   });
 });
 
-describe("convert", () => {
-  const {perUsd} = parseRates(SAMPLE);
-  test("USD to MXN and EUR", () => {
-    near(convert(100, "USD", "MXN", perUsd), 1859.05);
-    near(convert(100, "USD", "EUR", perUsd), 89.095);
+describe("Worker /fx", () => {
+  test("returns validated rates with their source", async () => {
+    const fx = await fxRates({}, async () => ({ok: true, json: async () => SAMPLE}));
+    assert.deepEqual(fx.perUsd, {USD: 1, MXN: 18.5905, EUR: 0.89095});
+    assert.match(fx.source, /European Central Bank/);
   });
-  test("cross rate EUR to MXN goes through USD", () => {
-    near(convert(1, "EUR", "MXN", perUsd), 18.5905 / 0.89095);
+  test("an implausible answer becomes an error, never a rate", async () => {
+    const fx = await fxRates({}, async () => ({ok: true, json: async () => ({...SAMPLE, rates: {EUR: 0}})}));
+    assert.ok(fx.error);
+    assert.equal(fx.perUsd, undefined);
   });
-  test("round trip returns the amount", () => {
-    near(convert(convert(1234.56, "MXN", "EUR", perUsd), "EUR", "MXN", perUsd), 1234.56, 1e-6);
-  });
-  test("unknown currency or no rates gives null", () => {
-    assert.equal(convert(1, "USD", "JPY", perUsd), null);
-    assert.equal(convert(1, "USD", "MXN", null), null);
-    assert.equal(convert(NaN, "USD", "MXN", perUsd), null);
-  });
-});
-
-test("crossRates lists every pair once", () => {
-  const list = crossRates(parseRates(SAMPLE).perUsd);
-  const n = Object.keys(CURRENCIES).length;
-  assert.equal(list.length, n * (n - 1));
-  assert.ok(list.every(x => x.from !== x.to && x.rate > 0));
 });

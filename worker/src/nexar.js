@@ -35,12 +35,16 @@ export const SEARCH_QUERY = `query Alternates($q: String!, $limit: Int!) {
   supSearch(q: $q, limit: $limit, currency: "USD") { hits results { part { ${PART_FIELDS} } } }
 }`;
 
+// Every upstream call gives up after this long, so one slow provider can't hold the page.
+export const UPSTREAM_TIMEOUT_MS = 4000;
+const timeout = () => AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
+
 // Client-credentials token, cached per Worker isolate until a minute before it expires.
 let cachedToken = null;
 export async function nexarToken(env, fetchFn = fetch, now = Date.now()){
   if (cachedToken && cachedToken.expires > now) return cachedToken.value;
   const res = await fetchFn(NEXAR_TOKEN_URL, {
-    method: "POST",
+    method: "POST", signal: timeout(),
     headers: {"Content-Type": "application/x-www-form-urlencoded"},
     body: new URLSearchParams({
       grant_type: "client_credentials", client_id: env.NEXAR_CLIENT_ID,
@@ -70,7 +74,7 @@ export const isRateLimitError = (status, message = "") =>
 export async function nexarQuery(env, query, variables, fetchFn = fetch){
   const token = await nexarToken(env, fetchFn);
   const res = await fetchFn(NEXAR_GRAPHQL_URL, {
-    method: "POST",
+    method: "POST", signal: timeout(),
     headers: {"Content-Type": "application/json", "Authorization": `Bearer ${token}`},
     body: JSON.stringify({query, variables})
   });
